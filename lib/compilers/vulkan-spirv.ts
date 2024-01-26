@@ -152,7 +152,6 @@ export class VulkanSPIRVCompiler extends BaseCompiler {
         const spvasmFilename = path.join(sourceDir, this.outputFilebase + '.spvasm');
         const disassemblerFlags = [spvBinFilename, '-o', spvasmFilename];
 
-        logger.error('funny frog', this.disassemblerPath);
         const spvasmOutput = await this.exec(this.disassemblerPath, disassemblerFlags, execOptions);
         if (spvasmOutput.code !== 0) {
             logger.error('SPIR-V binary to text failed', spvasmOutput);

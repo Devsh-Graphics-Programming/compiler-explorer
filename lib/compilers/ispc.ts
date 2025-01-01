@@ -24,22 +24,23 @@
 
 import Semver from 'semver';
 
+import {LLVMIrBackendOptions} from '../../types/compilation/ir.interfaces.js';
 import type {PreliminaryCompilerInfo} from '../../types/compiler.interfaces.js';
 import type {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces.js';
 import type {ResultLine} from '../../types/resultline/resultline.interfaces.js';
+import {unwrap} from '../assert.js';
 import {BaseCompiler} from '../base-compiler.js';
+import {CompilationEnvironment} from '../compilation-env.js';
 import {asSafeVer} from '../utils.js';
 
 import {ISPCParser} from './argument-parsers.js';
-import {unwrap} from '../assert.js';
-import {LLVMIrBackendOptions} from '../../types/compilation/ir.interfaces.js';
 
 export class ISPCCompiler extends BaseCompiler {
     static get key() {
         return 'ispc';
     }
 
-    constructor(info: PreliminaryCompilerInfo, env) {
+    constructor(info: PreliminaryCompilerInfo, env: CompilationEnvironment) {
         super(info, env);
         this.compiler.supportsIrView = true;
         this.compiler.irArg = ['--emit-llvm-text'];
@@ -73,11 +74,11 @@ export class ISPCCompiler extends BaseCompiler {
         return super.generateIR(inputFilename, newOptions, irOptions, produceCfg, filters);
     }
 
-    override getArgumentParser() {
+    override getArgumentParserClass() {
         return ISPCParser;
     }
 
-    override async generateAST(inputFilename, options): Promise<ResultLine[]> {
+    override async generateAST(inputFilename: string, options: string[]): Promise<ResultLine[]> {
         // These options make Clang produce an AST dump
         const newOptions = options.filter(option => option !== '--colored-output').concat(['--ast-dump']);
 
@@ -90,7 +91,7 @@ export class ISPCCompiler extends BaseCompiler {
         );
     }
 
-    override isCfgCompiler(/*compilerVersion*/) {
+    override isCfgCompiler() {
         return true;
     }
 }

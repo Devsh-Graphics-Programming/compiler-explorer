@@ -27,18 +27,21 @@ import path from 'path';
 import fs from 'fs-extra';
 import _ from 'underscore';
 
-import {BaseCompiler} from '../base-compiler.js';
-
-import type {PreliminaryCompilerInfo} from '../../types/compiler.interfaces.js';
 import type {ParsedAsmResult, ParsedAsmResultLine} from '../../types/asmresult/asmresult.interfaces.js';
-import {CompilationResult, ExecutionOptions} from '../../types/compilation/compilation.interfaces.js';
+import {CompilationResult, ExecutionOptionsWithEnv} from '../../types/compilation/compilation.interfaces.js';
 import type {
     OptPipelineBackendOptions,
     OptPipelineOutput,
 } from '../../types/compilation/opt-pipeline-output.interfaces.js';
+import type {PreliminaryCompilerInfo} from '../../types/compiler.interfaces.js';
+import type {UnprocessedExecResult} from '../../types/execution/execution.interfaces.js';
 import type {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces.js';
-
+import type {SelectedLibraryVersion} from '../../types/libraries/libraries.interfaces.js';
+import {unwrap} from '../assert.js';
+import {BaseCompiler, SimpleOutputFilenameCompiler} from '../base-compiler.js';
+import {CompilationEnvironment} from '../compilation-env.js';
 import {Dex2OatPassDumpParser} from '../parsers/dex2oat-pass-dump-parser.js';
+import * as utils from '../utils.js';
 
 export class Dex2OatCompiler extends BaseCompiler {
     static get key() {
@@ -61,13 +64,18 @@ export class Dex2OatCompiler extends BaseCompiler {
     compilerFilterArgRegex: RegExp;
     fullOutputArgRegex: RegExp;
 
+    versionPrefixRegex: RegExp;
+    latestVersionRegex: RegExp;
+
     fullOutput: boolean;
 
     d8Id: string;
-    d8Path: string;
     artArtifactDir: string;
+    profmanPath: string;
 
-    constructor(compilerInfo: PreliminaryCompilerInfo, env) {
+    libs: SelectedLibraryVersion[];
+
+    constructor(compilerInfo: PreliminaryCompilerInfo, env: CompilationEnvironment) {
         super({...compilerInfo}, env);
         this.compiler.optPipeline = {
             arg: ['-print-after-all', '-print-before-all'],
@@ -87,7 +95,13 @@ export class Dex2OatCompiler extends BaseCompiler {
         this.methodRegex = /^\s+\d+:\s+(.*)\s+\(dex_method_idx=\d+\)$/;
         this.methodSizeRegex = /^\s+CODE:\s+\(code_offset=0x\w+\s+size=(\d+).*$/;
         this.insnRegex = /^\s+(0x\w+):\s+\w+\s+(.*)$/;
+        // eslint-disable-next-line unicorn/better-regex
         this.stackMapRegex = /^\s+(StackMap\[\d+\])\s+\((.*)\).*$/;
+
+        // ART version codes in CE are in the format of AABB, where AA is the
+        // API level and BB is the number of months since the initial release.
+        this.versionPrefixRegex = /^(java|kotlin)-dex2oat-(\d\d)\d+$/;
+        this.latestVersionRegex = /^(java|kotlin)-dex2oat-latest$/;
 
         // User-provided arguments (with a default behavior if not provided).
         this.insnSetArgRegex = /^--instruction-set=.*$/;
@@ -100,24 +114,41 @@ export class Dex2OatCompiler extends BaseCompiler {
 
         // The underlying D8 version+exe.
         this.d8Id = this.compilerProps<string>(`compiler.${this.compiler.id}.d8Id`);
-        this.d8Path = this.compilerProps<string>(`compiler.${this.compiler.id}.d8Path`);
 
         // The directory containing ART artifacts necessary for dex2oat to run.
         this.artArtifactDir = this.compilerProps<string>(`compiler.${this.compiler.id}.artArtifactDir`);
+
+        // The path to the `profman` binary.
+        this.profmanPath = this.compilerProps<string>(`compiler.${this.compiler.id}.profmanPath`);
+
+        // Libraries that will flow to D8Compiler and Java/KotlinCompiler.
+        this.libs = [];
     }
 
     override async runCompiler(
         compiler: string,
         options: string[],
         inputFilename: string,
-        execOptions: ExecutionOptions & {env: Record<string, string>},
+        execOptions: ExecutionOptionsWithEnv,
+        filters?: ParseFiltersAndOutputOptions,
     ): Promise<CompilationResult> {
         // Make sure --full-output from previous invocations doesn't persist.
         this.fullOutput = false;
 
         // Instantiate D8 compiler, which will in turn instantiate a Java or
         // Kotlin compiler based on the current language.
-        const d8Compiler = global.handler_config.compileHandler.findCompiler(this.lang.id, this.d8Id);
+        const d8Compiler = unwrap(
+            global.handler_config.compileHandler.findCompiler(this.lang.id, this.d8Id),
+        ) as BaseCompiler & SimpleOutputFilenameCompiler;
+        if (!d8Compiler) {
+            return {
+                ...this.handleUserError(
+                    {message: `Compiler ${this.lang.id} ${this.d8Id} not configured correctly`},
+                    '',
+                ),
+                timedOut: false,
+            };
+        }
         const d8DirPath = path.dirname(inputFilename);
         const d8OutputFilename = d8Compiler.getOutputFilename(d8DirPath);
         const d8Options = _.compact(
@@ -127,23 +158,24 @@ export class Dex2OatCompiler extends BaseCompiler {
                 {}, // backendOptions
                 inputFilename,
                 d8OutputFilename,
-                [], // libraries
+                this.libs,
                 [], // overrides
             ),
         );
 
-        await d8Compiler.runCompiler(
-            this.d8Path,
+        const compileResult = await d8Compiler.runCompiler(
+            d8Compiler.getInfo().exe,
             d8Options,
             this.filename(inputFilename),
             d8Compiler.getDefaultExecOptions(),
         );
 
+        if (compileResult.code !== 0) {
+            return compileResult;
+        }
+
         if (!execOptions) {
             execOptions = this.getDefaultExecOptions();
-        }
-        if (!execOptions.customCwd) {
-            execOptions.customCwd = this.artArtifactDir;
         }
 
         let useDefaultInsnSet = true;
@@ -168,20 +200,54 @@ export class Dex2OatCompiler extends BaseCompiler {
 
         const files = await fs.readdir(d8DirPath);
         const dexFile = files.find(f => f.endsWith('.dex'));
+        if (!dexFile) {
+            throw new Error('Generated dex file not found');
+        }
+
+        const profileAndResult = await this.generateProfile(d8DirPath, dexFile);
+        if (profileAndResult && profileAndResult.result.code !== 0) {
+            return {
+                ...this.transformToCompilationResult(profileAndResult.result, inputFilename),
+                languageId: this.getCompilerResultLanguageId(filters),
+            };
+        }
+
+        const bootclassjars = [
+            'bootjars/core-oj.jar',
+            'bootjars/core-libart.jar',
+            'bootjars/okhttp.jar',
+            'bootjars/bouncycastle.jar',
+            'bootjars/apache-xml.jar',
+        ];
+
+        let isLatest = false;
+        let versionPrefix = 0;
+        let match;
+        if (this.versionPrefixRegex.test(this.compiler.id)) {
+            match = this.compiler.id.match(this.versionPrefixRegex);
+            versionPrefix = parseInt(match![2]);
+        } else if (this.latestVersionRegex.test(this.compiler.id)) {
+            isLatest = true;
+        }
+
         const dex2oatOptions = [
             '--android-root=include',
             '--generate-debug-info',
             '--dex-location=/system/framework/classes.dex',
             `--dex-file=${d8DirPath}/${dexFile}`,
+            '--copy-dex-files=always',
+            ...(versionPrefix >= 34 || isLatest ? ['--runtime-arg', '-Xgc:CMC'] : []),
             '--runtime-arg',
-            '-Xbootclasspath:bootjars/core-oj.jar:bootjars/core-libart.jar:bootjars/okhttp.jar' +
-                ':bootjars/bouncycastle.jar:bootjars/apache-xml.jar',
+            '-Xbootclasspath:' + bootclassjars.map(f => path.join(this.artArtifactDir, f)).join(':'),
             '--runtime-arg',
-            '-Xbootclasspath-locations:/apex/com.android.art/core-oj.jar:/apex/com.android.art/core-libart.jar' +
-                ':/apex/com.android.art/okhttp.jar:/apex/com.android.art/bouncycastle.jar' +
+            '-Xbootclasspath-locations:/apex/com.android.art/javalib/core-oj.jar' +
+                ':/apex/com.android.art/javalib/core-libart.jar' +
+                ':/apex/com.android.art/javalib/okhttp.jar' +
+                ':/apex/com.android.art/javalib/bouncycastle.jar' +
                 ':/apex/com.android.art/javalib/apache-xml.jar',
-            '--boot-image=/nonx/boot.art',
+            `--boot-image=${this.artArtifactDir}/app/system/framework/boot.art`,
             `--oat-file=${d8DirPath}/classes.odex`,
+            `--app-image-file=${d8DirPath}/classes.art`,
             '--force-allow-oj-inlines',
             `--dump-cfg=${d8DirPath}/classes.cfg`,
             ...userOptions,
@@ -190,17 +256,65 @@ export class Dex2OatCompiler extends BaseCompiler {
             dex2oatOptions.push('--instruction-set=arm64');
         }
         if (useDefaultCompilerFilter) {
-            dex2oatOptions.push('--compiler-filter=speed');
+            if (profileAndResult == null) {
+                dex2oatOptions.push('--compiler-filter=speed');
+            } else {
+                dex2oatOptions.push('--compiler-filter=speed-profile');
+            }
+        }
+        if (profileAndResult != null) {
+            dex2oatOptions.push(`--profile-file=${profileAndResult.path}`);
         }
 
+        execOptions.customCwd = d8DirPath;
+
         const result = await this.exec(this.compiler.exe, dex2oatOptions, execOptions);
+        if (profileAndResult != null) {
+            result.stdout = profileAndResult.result.stdout + result.stdout;
+            result.stderr = profileAndResult.result.stderr + result.stderr;
+        }
         return {
             ...this.transformToCompilationResult(result, d8OutputFilename),
-            languageId: this.getCompilerResultLanguageId(),
+            languageId: this.getCompilerResultLanguageId(filters),
         };
     }
 
-    override async objdump(outputFilename, result: any, maxSize: number) {
+    override getIncludeArguments(libraries: SelectedLibraryVersion[], dirPath: string): string[] {
+        this.libs = libraries;
+        return super.getIncludeArguments(libraries, dirPath);
+    }
+
+    private async generateProfile(
+        d8DirPath: string,
+        dexFile: string,
+    ): Promise<{path: string; result: UnprocessedExecResult} | null> {
+        const humanReadableFormatProfile = `${d8DirPath}/profile.prof.txt`;
+        try {
+            await fs.access(humanReadableFormatProfile);
+        } catch (e) {
+            // No profile. This is expected.
+            return null;
+        }
+
+        const execOptions = this.getDefaultExecOptions();
+        execOptions.customCwd = d8DirPath;
+        const binaryFormatProfile = `${d8DirPath}/profile.prof`;
+        const result = await this.exec(
+            this.profmanPath,
+            [
+                `--create-profile-from=${humanReadableFormatProfile}`,
+                `--apk=${d8DirPath}/${dexFile}`,
+                '--dex-location=/system/framework/classes.dex',
+                `--reference-profile-file=${binaryFormatProfile}`,
+                '--output-profile-type=app',
+            ],
+            execOptions,
+        );
+
+        return {path: binaryFormatProfile, result: result};
+    }
+
+    override async objdump(outputFilename: string, result: any, maxSize: number) {
         const dirPath = path.dirname(outputFilename);
         const files = await fs.readdir(dirPath);
         const odexFile = files.find(f => f.endsWith('.odex'));
@@ -235,12 +349,42 @@ export class Dex2OatCompiler extends BaseCompiler {
         return [];
     }
 
-    override async processAsm(result) {
-        // result.asm is an array, but we only expect it to have one value.
-        const asm = result.asm[0].text;
+    // dex2oat doesn't have --version, but artArtifactDir contains a file with
+    // the build number.
+    override async getVersion() {
+        const versionFile = this.artArtifactDir + '/snapshot-creation-build-number.txt';
+        const version = fs.readFileSync(versionFile, {encoding: 'utf8'});
+        return {
+            stdout: 'Android Build ' + version,
+            stderr: '',
+            code: 0,
+        };
+    }
+
+    override async processAsm(result, filters: ParseFiltersAndOutputOptions) {
+        let asm: string = '';
+
+        if (typeof result.asm === 'string') {
+            const asmLines = utils.splitLines(result.asm);
+            if (asmLines.length === 1 && asmLines[0][0] === '<') {
+                return {
+                    asm: [{text: asmLines[0], source: null}],
+                };
+            } else {
+                return {
+                    asm: [{text: JSON.stringify(asmLines), source: null}],
+                };
+            }
+        } else {
+            // result.asm is an array, but we only expect it to have one value.
+            asm = result.asm[0].text;
+        }
 
         const segments: ParsedAsmResultLine[] = [];
-        if (!this.fullOutput) {
+        if (this.fullOutput || !filters.directives) {
+            // Returns entire dex2oat output.
+            segments.push({text: asm, source: null});
+        } else {
             const {compileData, classNames, classToMethods, methodsToInstructions, methodsToSizes} = this.parseAsm(asm);
 
             segments.push(
@@ -256,8 +400,9 @@ export class Dex2OatCompiler extends BaseCompiler {
                     text: 'Compiler filter:          ' + compileData.compilerFilter,
                     source: null,
                 },
+                {text: '', source: null},
+                {text: '', source: null},
             );
-            segments.push({text: '', source: null}, {text: '', source: null});
 
             for (const className of classNames) {
                 for (const method of classToMethods[className]) {
@@ -274,15 +419,12 @@ export class Dex2OatCompiler extends BaseCompiler {
                     segments.push({text: '', source: null});
                 }
             }
-        } else {
-            // Returns entire dex2oat output.
-            segments.push({text: asm, source: null});
         }
 
         return {asm: segments};
     }
 
-    parseAsm(oatdumpOut) {
+    parseAsm(oatdumpOut: string) {
         const compileData: {
             insnSet?: string;
             insnSetFeatures?: string;
@@ -297,11 +439,11 @@ export class Dex2OatCompiler extends BaseCompiler {
         let match;
         if (this.insnSetRegex.test(oatdumpOut)) {
             match = oatdumpOut.match(this.insnSetRegex);
-            compileData.insnSet = match[1];
+            compileData.insnSet = match![1];
         }
         if (this.insnSetFeaturesRegex.test(oatdumpOut)) {
             match = oatdumpOut.match(this.insnSetFeaturesRegex);
-            compileData.insnSetFeatures = match[1];
+            compileData.insnSetFeatures = match![1];
         }
 
         let inCode = false;
@@ -310,28 +452,28 @@ export class Dex2OatCompiler extends BaseCompiler {
         for (const l of oatdumpOut.split(/\n/)) {
             if (this.compilerFilterRegex.test(l)) {
                 match = l.match(this.compilerFilterRegex);
-                compileData.compilerFilter = match[1];
+                compileData.compilerFilter = match![1];
             } else if (this.classRegex.test(l)) {
                 match = l.match(this.classRegex);
-                currentClass = match[1];
+                currentClass = match![1];
                 classNames.push(currentClass);
                 classToMethods[currentClass] = [];
             } else if (this.methodRegex.test(l)) {
                 match = l.match(this.methodRegex);
-                currentMethod = match[1];
+                currentMethod = match![1];
                 classToMethods[currentClass].push(currentMethod);
                 methodsToInstructions[currentMethod] = [];
                 inCode = false;
             } else if (this.methodSizeRegex.test(l)) {
                 match = l.match(this.methodSizeRegex);
-                methodsToSizes[currentMethod] = Number.parseInt(match[1]);
+                methodsToSizes[currentMethod] = Number.parseInt(match![1]);
                 inCode = true;
             } else if (inCode && this.insnRegex.test(l)) {
                 match = l.match(this.insnRegex);
-                methodsToInstructions[currentMethod].push(match[1] + '    ' + match[2]);
+                methodsToInstructions[currentMethod].push(match![1] + '    ' + match![2]);
             } else if (inCode && this.stackMapRegex.test(l)) {
                 match = l.match(this.stackMapRegex);
-                methodsToInstructions[currentMethod].push(' ' + match[1] + '   ' + match[2]);
+                methodsToInstructions[currentMethod].push(' ' + match![1] + '   ' + match![2]);
             }
         }
 
@@ -354,7 +496,7 @@ export class Dex2OatCompiler extends BaseCompiler {
 
         try {
             const classesCfg = dirPath + '/classes.cfg';
-            const rawText = fs.readFileSync(classesCfg, {encoding: 'utf-8'});
+            const rawText = fs.readFileSync(classesCfg, {encoding: 'utf8'});
             const parseStart = performance.now();
             const optPipeline = this.passDumpParser.process(rawText);
             const parseEnd = performance.now();

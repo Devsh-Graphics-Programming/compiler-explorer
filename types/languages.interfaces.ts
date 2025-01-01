@@ -49,16 +49,19 @@ export type LanguageKey =
     | 'cuda'
     | 'd'
     | 'dart'
+    | 'elixir'
     | 'erlang'
     | 'fortran'
     | 'fsharp'
     | 'gimple'
+    | 'glsl'
     | 'go'
     | 'haskell'
     | 'hlsl'
     | 'hook'
     | 'hylo'
     | 'ispc'
+    | 'il'
     | 'jakt'
     | 'java'
     | 'julia'
@@ -70,6 +73,7 @@ export type LanguageKey =
     | 'modula2'
     | 'nim'
     | 'ocaml'
+    | 'odin'
     | 'objc'
     | 'objc++'
     | 'openclc'
@@ -80,7 +84,10 @@ export type LanguageKey =
     | 'ruby'
     | 'rust'
     | 'scala'
+    | 'slang'
     | 'solidity'
+    | 'spice'
+    | 'spirv'
     | 'swift'
     | 'tablegen'
     | 'toit'
@@ -88,7 +95,10 @@ export type LanguageKey =
     | 'v'
     | 'vala'
     | 'vb'
-    | 'zig';
+    | 'vyper'
+    | 'wasm'
+    | 'zig'
+    | 'ylc';
 
 export interface Language {
     /** Id of language. Added programmatically based on CELanguages key */
@@ -122,4 +132,5 @@ export interface Language {
     tooltip?: string;
     /** Default compiler for the language. This is populated when handed to the frontend. */
     defaultCompiler?: string;
+    digitSeparator?: string;
 }

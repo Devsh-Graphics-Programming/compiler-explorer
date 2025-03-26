@@ -31,6 +31,7 @@ import {BaseCompiler} from '../base-compiler.js';
 import {logger} from '../logger.js';
 import {SPIRVAsmParser} from '../parsers/asm-parser-spirv.js';
 import * as utils from '../utils.js';
+import { splitArguments } from '../../shared/common-utils.js';
 import {unwrap} from '../assert.js';
 import type {ConfiguredOverrides} from '../../types/compilation/compiler-overrides.interfaces.js';
 import {LLVMIrBackendOptions} from '../../types/compilation/ir.interfaces.js';
@@ -66,8 +67,8 @@ export class NSCSPIRVCompiler extends BaseCompiler {
         backendOptions = backendOptions || {};
 
         if (this.compiler.options) {
-            const compilerOptions = utils
-                .splitArguments(this.compiler.options)
+            const compilerOptions = 
+                splitArguments(this.compiler.options)
                 .filter(option => option !== '-fno-crash-diagnostics');
 
             options = options.concat(compilerOptions);
@@ -77,7 +78,7 @@ export class NSCSPIRVCompiler extends BaseCompiler {
             options = options.concat(unwrap(this.compiler.optArg));
         }
 
-        const libIncludes = this.getIncludeArguments(libraries);
+        const libIncludes = this.getIncludeArguments(libraries, path.dirname(inputFilename));
         const libOptions = this.getLibraryOptions(libraries);
         let libLinks: string[] = [];
         let libPaths: string[] = [];
@@ -85,7 +86,7 @@ export class NSCSPIRVCompiler extends BaseCompiler {
 
         if (filters.binary) {
             libLinks = this.getSharedLibraryLinks(libraries);
-            libPaths = this.getSharedLibraryPathsAsArguments(libraries);
+            libPaths = this.getSharedLibraryPathsAsArguments(libraries, undefined, undefined, path.dirname(inputFilename));
             staticLibLinks = this.getStaticLibraryLinks(libraries);
         }
 

@@ -22,11 +22,9 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import os from 'os';
-import path from 'path';
+import path from 'node:path';
 
-import fs from 'fs-extra';
-import temp from 'temp';
+import fs from 'node:fs/promises';
 
 import {splitArguments} from '../../shared/common-utils.js';
 import {
@@ -51,6 +49,7 @@ import {logger} from '../logger.js';
 import {Packager} from '../packager.js';
 import {propsFor} from '../properties.js';
 import {HeaptrackWrapper} from '../runtime-tools/heaptrack-wrapper.js';
+import * as temp from '../temp.js';
 import * as utils from '../utils.js';
 
 import {ExecutablePackageCacheMiss, IExecutionEnvironment} from './execution-env.interfaces.js';
@@ -124,13 +123,12 @@ export class LocalExecutionEnvironment implements IExecutionEnvironment {
                 executableFilename: executableFilename,
                 packageDownloadAndUnzipTime: utils.deltaTimeNanoToMili(startTime, endTime),
             });
-        } else {
-            throw new ExecutablePackageCacheMiss('Tried to get executable from cache, but got a cache miss');
         }
+        throw new ExecutablePackageCacheMiss('Tried to get executable from cache, but got a cache miss');
     }
 
     async downloadExecutablePackage(hash: string): Promise<void> {
-        this.dirPath = await temp.mkdir({prefix: utils.ce_temp_prefix, dir: os.tmpdir()});
+        this.dirPath = await temp.mkdir(utils.ce_temp_prefix);
 
         this.buildResult = await this.loadPackageWithExecutable(hash, this.dirPath);
     }
@@ -148,12 +146,7 @@ export class LocalExecutionEnvironment implements IExecutionEnvironment {
             }
         }
 
-        if (
-            this.buildResult &&
-            this.buildResult.defaultExecOptions &&
-            this.buildResult.defaultExecOptions.env &&
-            this.buildResult.defaultExecOptions.env.PATH
-        ) {
+        if (this.buildResult?.defaultExecOptions?.env?.PATH) {
             if (env.PATH.length > 0)
                 env.PATH = env.PATH + path.delimiter + this.buildResult.defaultExecOptions.env.PATH;
             else env.PATH = this.buildResult.defaultExecOptions.env.PATH;
@@ -169,7 +162,7 @@ export class LocalExecutionEnvironment implements IExecutionEnvironment {
             env,
         };
 
-        if (this.buildResult && this.buildResult.preparedLdPaths) {
+        if (this.buildResult?.preparedLdPaths) {
             execOptions.ldPath = this.buildResult.preparedLdPaths.concat(extraLdPaths);
         } else {
             execOptions.ldPath = extraLdPaths;
@@ -246,17 +239,16 @@ export class LocalExecutionEnvironment implements IExecutionEnvironment {
                 executeParameters,
                 homeDir,
             );
-        } catch (err: UnprocessedExecResult | any) {
+        } catch (err: any) {
             if (err.code && err.stderr) {
                 return utils.processExecutionResult(err);
-            } else {
-                return {
-                    ...utils.getEmptyExecutionResult(),
-                    stdout: err.stdout ? utils.parseOutput(err.stdout) : [],
-                    stderr: err.stderr ? utils.parseOutput(err.stderr) : [],
-                    code: err.code === undefined ? -1 : err.code,
-                };
             }
+            return {
+                ...utils.getEmptyExecutionResult(),
+                stdout: err.stdout ? utils.parseOutput(err.stdout) : [],
+                stderr: err.stderr ? utils.parseOutput(err.stderr) : [],
+                code: err.code === undefined ? -1 : err.code,
+            };
         }
     }
 
@@ -335,10 +327,9 @@ export class LocalExecutionEnvironment implements IExecutionEnvironment {
             }
 
             return processed;
-        } else {
-            const execResult: UnprocessedExecResult = await exec.sandbox(executable, args, execOptions);
-            return this.processUserExecutableExecutionResult(execResult, Array.from(lineParseOptions.values()));
         }
+        const execResult: UnprocessedExecResult = await exec.sandbox(executable, args, execOptions);
+        return this.processUserExecutableExecutionResult(execResult, Array.from(lineParseOptions.values()));
     }
 
     processUserExecutableExecutionResult(

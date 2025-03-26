@@ -28,14 +28,6 @@ levels:
         topIconShowEvery: 3
         displayType: SideBySide
         statsId: google
-      - name: thinkcell
-        description: Looking for C++ Developers (m/f/d) in Berlin and REMOTE. Earn up to 130 000 EUR per year.
-        img: https://static.ce-cdn.net/thinkcell/think-cell-wb-2.svg
-        url: https://www.think-cell.com/compilerexplorer
-        topIconShowEvery: 3
-        displayType: SideBySide
-        statsId: thinkcell
-        bgColour: rgb(110, 166, 0)
       - name: CLion
         description: CLion, the cross-platform IDE for C and C++, is robust, responsive, and loaded with new functionality to help you make your development experience smoother and more productive.
         icon: https://static.ce-cdn.net/jetbrains/Jetbrains.png
@@ -45,6 +37,15 @@ levels:
         topIconShowEvery: 3
         displayType: SideBySide
         statsId: jetbrains
+      - name: Cppcon
+        description: Join the CppCon family live &amp; in-person this September in Aurora, Colorado, USA! Pre-register for CppCon 2025 at <a href="https://www.CppCon.org" target="_blank">www.CppCon.org</a>.
+        img: https://static.ce-cdn.net/cppcon/cppcon-white-gold-5.svg
+        icon: https://static.ce-cdn.net/cppcon/cppcon-blue-gold-5.svg
+        icon_dark: https://static.ce-cdn.net/cppcon/cppcon-white-gold-5.svg
+        url: https://cppcon.org/
+        displayType: SideBySide
+        topIconShowEvery: 3
+        statsId: cppcon
   - name: Patreon Legends
     description: 'These amazing people have pledged at the highest level of support. Huge thanks to these fine folks:'
     class: legendary
@@ -406,6 +407,7 @@ levels:
       - Daniele Salvatore Albano
       - Frank Wessels
       - Michele Bianchi
+      - Piotr Fusik
       - Chandler Carruth
       - Daniel Collin
       - Deirdre Connolly
@@ -424,7 +426,7 @@ levels:
       - Michael Sartain
       - Patricia Aas
       - Rasmus
-      - Siyuan Han
+      - Siyuan.H
       - Vezel
       - lcnr
       - Abhishek Bhrushundi
@@ -496,3 +498,18 @@ levels:
       - Per Tillisch
       - Tobias Neukom
       - mason
+      - Apostolos Piperis
+      - Patrik Bachan
+      - Simon Turner
+      - Sharad Khanna
+      - Kim Gräsman
+      - Waffles The Dog
+      - Pablo Halpern
+      - Benjamin FrantzDale
+      - Jevin Sweval
+      - woobwoobwoob
+      - Drew Dormann
+      - Ryan Lee
+      - elliot
+      - Cemalettin Dervis
+      - Yuki ITO

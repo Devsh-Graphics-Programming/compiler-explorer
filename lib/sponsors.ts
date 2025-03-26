@@ -80,7 +80,7 @@ function sponsorIconSetsOk(
 ): boolean {
     const countsByShowEvery: Map<number, number[]> = new Map();
     for (const [icon, count] of sponsorAppearanceCount.entries()) {
-        const seenEvery = count > 0 ? totalAppearances / count : Infinity;
+        const seenEvery = count > 0 ? totalAppearances / count : Number.POSITIVE_INFINITY;
         if (seenEvery > icon.topIconShowEvery) {
             return false;
         }
@@ -107,8 +107,9 @@ export function makeIconSets(
         const toPick = icons.map(icon => {
             return {
                 icon: icon,
-                // Number of times we'd expect to see this, divided by number of times we saw it
-                error: result.length / icon.topIconShowEvery / (sponsorAppearanceCount.get(icon) || 0.00001),
+                // Number of times we'd expect to see this, divided by number of times we saw it, assuming that we pick
+                // this one next.
+                error: (result.length + 1) / icon.topIconShowEvery / ((sponsorAppearanceCount.get(icon) || 0) + 1),
             };
         });
         toPick.sort((lhs, rhs) => rhs.error - lhs.error);

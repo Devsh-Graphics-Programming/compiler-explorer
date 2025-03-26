@@ -22,29 +22,30 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import {options} from '../options.js';
-import _ from 'underscore';
-import $ from 'jquery';
-import * as Components from '../components.js';
-import {CompilerLibs, LibsWidget} from '../widgets/libs-widget.js';
-import {CompilerPicker} from '../widgets/compiler-picker.js';
-import * as utils from '../utils.js';
-import * as LibUtils from '../lib-utils.js';
-import {PaneRenaming} from '../widgets/pane-renaming.js';
-import {CompilerService} from '../compiler-service.js';
-import {Pane} from './pane.js';
-import {Hub} from '../hub.js';
 import {Container} from 'golden-layout';
-import {PaneState} from './pane.interfaces.js';
-import {ConformanceViewState} from './conformance-view.interfaces.js';
-import {Library, LibraryVersion} from '../options.interfaces.js';
-import {CompilerInfo} from '../../types/compiler.interfaces.js';
-import {CompilationResult} from '../../types/compilation/compilation.interfaces.js';
-import {Lib} from '../widgets/libs-widget.interfaces.js';
-import {SourceAndFiles} from '../download-service.js';
+import $ from 'jquery';
+import _ from 'underscore';
 import {escapeHTML, unique} from '../../shared/common-utils.js';
+import {CompilationResult} from '../../types/compilation/compilation.interfaces.js';
+import {CompilerInfo} from '../../types/compiler.interfaces.js';
 import {unwrapString} from '../assert.js';
+import {CompilationStatus} from '../compiler-service.interfaces.js';
+import {CompilerService} from '../compiler-service.js';
+import * as Components from '../components.js';
+import {SourceAndFiles} from '../download-service.js';
+import {Hub} from '../hub.js';
+import * as LibUtils from '../lib-utils.js';
 import {SelectedLibraryVersion} from '../libraries/libraries.interfaces.js';
+import {Library, LibraryVersion} from '../options.interfaces.js';
+import {options} from '../options.js';
+import * as utils from '../utils.js';
+import {CompilerPicker} from '../widgets/compiler-picker.js';
+import {Lib} from '../widgets/libs-widget.interfaces.js';
+import {CompilerLibs, LibsWidget} from '../widgets/libs-widget.js';
+import {PaneRenaming} from '../widgets/pane-renaming.js';
+import {ConformanceViewState} from './conformance-view.interfaces.js';
+import {PaneState} from './pane.interfaces.js';
+import {Pane} from './pane.js';
 
 type CompilerEntry = {
     parent: JQuery<HTMLElement>;
@@ -187,7 +188,7 @@ export class Conformance extends Pane<ConformanceViewState> {
 
     override updateTitle(): void {
         let compilerText = '';
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+
         if (this.compilerPickers && this.compilerPickers.length !== 0) {
             compilerText = ' ' + this.compilerPickers.length + '/' + this.maxCompilations;
         }
@@ -248,7 +249,7 @@ export class Conformance extends Pane<ConformanceViewState> {
             popCompilerButton.toggleClass('d-none', !compilerId);
             this.saveState();
             // Hide the results icon when a new compiler is selected
-            this.handleStatusIcon(newCompilerEntry.statusIcon, {code: 0});
+            this.handleStatusIcon(newCompilerEntry.statusIcon, {code: 0, compilerOut: 0});
             const compiler = this.compilerService.findCompiler(this.langId, compilerId);
             if (compiler) this.setCompilationOptionsPopover(newCompilerEntry.prependOptions, compiler.options);
             this.updateLibraries();
@@ -312,9 +313,7 @@ export class Conformance extends Pane<ConformanceViewState> {
     }
 
     removeCompilerPicker(compilerEntry: CompilerEntry): void {
-        this.compilerPickers = _.reject(this.compilerPickers, function (entry) {
-            return compilerEntry.picker?.id === entry.picker?.id;
-        });
+        this.compilerPickers = _.reject(this.compilerPickers, entry => compilerEntry.picker?.id === entry.picker?.id);
         compilerEntry.picker?.destroy();
         compilerEntry.parent.remove();
 
@@ -325,7 +324,7 @@ export class Conformance extends Pane<ConformanceViewState> {
 
     copyCompilerPicker(config: AddCompilerPickerConfig): void {
         this.addCompilerPicker(config);
-        this.compileChild(this.compilerPickers.at(-1));
+        this.compileChild(this.compilerPickers.at(-1) as CompilerEntry);
         this.saveState();
     }
 
@@ -351,14 +350,13 @@ export class Conformance extends Pane<ConformanceViewState> {
     onEditorClose(editorId: number): void {
         if (editorId === this.compilerInfo.editorId) {
             this.close();
-            _.defer(function (self) {
+            _.defer((self: Conformance) => {
                 self.container.close();
             }, this);
         }
     }
 
     private hasResultAnyOutput(result: CompilationResult): boolean {
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         return (result.stdout || []).length > 0 || (result.stderr || []).length > 0;
     }
 
@@ -385,24 +383,24 @@ export class Conformance extends Pane<ConformanceViewState> {
     }
 
     private getCompilerId(compilerEntry?: CompilerEntry): string {
-        if (compilerEntry && compilerEntry.picker && compilerEntry.picker.tomSelect) {
+        if (compilerEntry?.picker?.tomSelect) {
             return unwrapString(compilerEntry.picker.tomSelect.getValue());
         }
         return '';
     }
 
-    compileChild(compilerEntry) {
+    compileChild(compilerEntry: CompilerEntry) {
         const compilerId = this.getCompilerId(compilerEntry);
         if (compilerId === '') return;
         // Hide previous status icons
-        this.handleStatusIcon(compilerEntry.statusIcon, {code: 4});
+        this.handleStatusIcon(compilerEntry.statusIcon, {code: 4, compilerOut: 0});
 
         this.expandToFiles().then(expanded => {
             const request = {
                 source: expanded.source,
                 compiler: compilerId,
                 options: {
-                    userArguments: compilerEntry.optionsField.val() || '',
+                    userArguments: compilerEntry.optionsField!.val() || '',
                     filters: {},
                     compilerOptions: {produceAst: false, produceOptInfo: false, skipAsm: true},
                     libraries: [] as SelectedLibraryVersion[],
@@ -449,7 +447,7 @@ export class Conformance extends Pane<ConformanceViewState> {
         this.updateTitle();
     }
 
-    handleStatusIcon(statusIcon, status): void {
+    handleStatusIcon(statusIcon: JQuery<HTMLElement> | null, status: CompilationStatus): void {
         CompilerService.handleCompilationStatus(null, statusIcon, status);
     }
 
@@ -571,7 +569,7 @@ export class Conformance extends Pane<ConformanceViewState> {
     }
 
     initFromState(state?: ConformanceViewState): void {
-        if (state && state.compilers) {
+        if (state?.compilers) {
             this.lastState = state;
             for (const compiler of state.compilers) {
                 this.addCompilerPicker(compiler);

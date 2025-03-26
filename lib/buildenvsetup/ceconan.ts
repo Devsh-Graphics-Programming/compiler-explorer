@@ -22,10 +22,10 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'path';
-import zlib from 'zlib';
+import path from 'node:path';
+import zlib from 'node:zlib';
 
-import fs, {mkdirp} from 'fs-extra';
+import fs from 'node:fs';
 import request from 'request';
 import tar from 'tar-stream';
 import _ from 'underscore';
@@ -126,9 +126,8 @@ export class BuildEnvSetupCeConanDirect extends BuildEnvSetupBase {
         if (this.extractAllToRoot) {
             const filename = path.basename(zippedPath);
             return path.join(downloadPath, filename);
-        } else {
-            return path.join(downloadPath, libId, zippedPath);
         }
+        return path.join(downloadPath, libId, zippedPath);
     }
 
     async downloadAndExtractPackage(
@@ -155,7 +154,7 @@ export class BuildEnvSetupCeConanDirect extends BuildEnvSetupBase {
                     }
 
                     if (!this.extractAllToRoot) {
-                        await mkdirp(path.dirname(filepath));
+                        await fs.promises.mkdir(path.dirname(filepath), {recursive: true});
                     }
 
                     const filestream = fs.createWriteStream(filepath);
@@ -245,11 +244,11 @@ export class BuildEnvSetupCeConanDirect extends BuildEnvSetupBase {
             return _.all(buildProperties, (val, key) => {
                 if ((key === 'compiler' || key === 'compiler.version') && elem.settings[key] === 'cshared') {
                     return true;
-                } else if (key === 'compiler.libcxx' && elem.settings['compiler'] === 'cshared') {
-                    return true;
-                } else {
-                    return val === elem.settings[key];
                 }
+                if (key === 'compiler.libcxx' && elem.settings['compiler'] === 'cshared') {
+                    return true;
+                }
+                return val === elem.settings[key];
             });
         });
     }

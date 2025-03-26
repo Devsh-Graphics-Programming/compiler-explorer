@@ -22,6 +22,9 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 
 import {BaseCompiler} from '../lib/base-compiler.js';
@@ -37,11 +40,9 @@ import {CompilerOverrideType, ConfiguredOverrides} from '../types/compilation/co
 import {CompilerInfo} from '../types/compiler.interfaces.js';
 
 import {
-    fs,
     makeCompilationEnvironment,
     makeFakeCompilerInfo,
     makeFakeParseFiltersAndOutputOptions,
-    path,
     shouldExist,
 } from './utils.js';
 
@@ -60,6 +61,7 @@ describe('Basic compiler invariants', () => {
             target: 'foo',
             path: 'bar',
             cmakePath: 'cmake',
+            basePath: '/',
         },
         lang: 'c++',
         ldPath: [],
@@ -85,6 +87,7 @@ describe('Basic compiler invariants', () => {
         function testIncludeG(text: string) {
             expect(compiler.checkSource(text)).toBeNull();
         }
+
         testIncludeG('#include <iostream>');
         testIncludeG('#include <iostream>  // <..>');
         testIncludeG('#include <type_traits> // for std::is_same_v<...>');
@@ -95,6 +98,7 @@ describe('Basic compiler invariants', () => {
         function testIncludeNotG(text: string) {
             expect(compiler.checkSource(text)).toEqual('<stdin>:1:1: no absolute or relative includes please');
         }
+
         testIncludeNotG('#include <./.bashrc>');
         testIncludeNotG('#include </dev/null>  // <..>');
         testIncludeNotG('#include <../fish.config> // for std::is_same_v<...>');
@@ -104,7 +108,7 @@ describe('Basic compiler invariants', () => {
         const newConfig: Partial<CompilerInfo> = {...info, explicitVersion: '123'};
         const forcedVersionCompiler = new BaseCompiler(newConfig as CompilerInfo, ce);
         const result = await forcedVersionCompiler.getVersion();
-        expect(result && result.stdout).toEqual('123');
+        expect(result?.stdout).toEqual('123');
     });
 });
 
@@ -119,6 +123,7 @@ describe('Compiler execution', () => {
             target: 'foo',
             path: 'bar',
             cmakePath: 'cmake',
+            basePath: '/',
         },
         lang: 'c++',
         ldPath: [],
@@ -132,6 +137,7 @@ describe('Compiler execution', () => {
             target: 'foo',
             path: 'bar',
             cmakePath: 'cmake',
+            basePath: '/',
         },
         lang: 'c++',
         ldPath: [],
@@ -144,6 +150,7 @@ describe('Compiler execution', () => {
             target: 'foo',
             path: 'bar',
             cmakePath: 'cmake',
+            basePath: '/',
         },
         lang: 'c++',
         ldPath: [],
@@ -154,6 +161,7 @@ describe('Compiler execution', () => {
             target: 'foo',
             path: 'bar',
             cmakePath: 'cmake',
+            basePath: '/',
         },
         lang: 'c++',
         ldPath: [],
@@ -748,6 +756,7 @@ describe('getDefaultExecOptions', () => {
             target: 'foo',
             path: 'bar',
             cmakePath: 'cmake',
+            basePath: '/',
         },
         lang: 'c++',
         ldPath: [],
@@ -818,6 +827,7 @@ describe('Rust overrides', () => {
             target: '',
             path: '',
             cmakePath: '',
+            basePath: '/',
         },
         semver: 'nightly',
         lang: 'rust',
@@ -856,7 +866,7 @@ describe('Rust overrides', () => {
         );
         expect(originalOptions).toEqual([
             '-C',
-            'debuginfo=1',
+            'debuginfo=2',
             '-o',
             'output.txt',
             '--crate-type',
@@ -870,6 +880,6 @@ describe('Rust overrides', () => {
                     value: 'aarch64-linux-something',
                 },
             ]),
-        ).toEqual(['-C', 'debuginfo=1', '-o', 'output.txt', '--crate-type', 'bin', '-Clinker=/usr/aarch64/bin/gcc']);
+        ).toEqual(['-C', 'debuginfo=2', '-o', 'output.txt', '--crate-type', 'bin', '-Clinker=/usr/aarch64/bin/gcc']);
     });
 });

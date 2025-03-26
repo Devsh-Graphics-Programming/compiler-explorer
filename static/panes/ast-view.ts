@@ -22,21 +22,22 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import $ from 'jquery';
-import _ from 'underscore';
-import * as monaco from 'monaco-editor';
 import {Container} from 'golden-layout';
+import $ from 'jquery';
+import * as monaco from 'monaco-editor';
+import _ from 'underscore';
 
-import {MonacoPane} from './pane.js';
-import {AstState} from './ast-view.interfaces.js';
-import {MonacoPaneState} from './pane.interfaces.js';
 import * as colour from '../colour.js';
 import * as monacoConfig from '../monaco-config.js';
+import {AstState} from './ast-view.interfaces.js';
+import {MonacoPaneState} from './pane.interfaces.js';
+import {MonacoPane} from './pane.js';
 
-import {Hub} from '../hub.js';
 import {unwrap} from '../assert.js';
-import {CompilerInfo} from '../compiler.interfaces.js';
 import {CompilationResult} from '../compilation/compilation.interfaces.js';
+import {CompilerInfo} from '../compiler.interfaces.js';
+import {Hub} from '../hub.js';
+import {ResultLine} from '../resultline/resultline.interfaces.js';
 
 type DecorationEntry = {
     linkedCode: any[];
@@ -189,7 +190,7 @@ export class Ast extends MonacoPane<monaco.editor.IStandaloneCodeEditor, AstStat
     }
 
     showAstResults(results: any) {
-        const fullText = typeof results === 'string' ? results : results.map(x => x.text).join('\n');
+        const fullText = typeof results === 'string' ? results : results.map((x: ResultLine) => x.text).join('\n');
         this.editor.setValue(fullText);
         if (results) {
             if (typeof results === 'string') {
@@ -233,8 +234,7 @@ export class Ast extends MonacoPane<monaco.editor.IStandaloneCodeEditor, AstStat
         const astColours: Record<number, number> = {};
         for (const [index, code] of this.astCode.entries()) {
             if (
-                code.source &&
-                code.source.from?.line &&
+                code.source?.from?.line &&
                 code.source.to?.line &&
                 code.source.from.line <= code.source.to.line &&
                 code.source.to.line < code.source.from.line + 100

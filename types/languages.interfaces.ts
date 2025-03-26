@@ -24,6 +24,7 @@
 
 export type LanguageKey =
     | 'ada'
+    | 'algol68'
     | 'analysis'
     | 'android-java'
     | 'android-kotlin'
@@ -38,6 +39,8 @@ export type LanguageKey =
     | 'cmake'
     | 'cmakescript'
     | 'cobol'
+    | 'coccinelle_for_c'
+    | 'coccinelle_for_cpp'
     | 'cpp_for_opencl'
     | 'cppx'
     | 'snowball'
@@ -72,6 +75,7 @@ export type LanguageKey =
     | 'mlir'
     | 'modula2'
     | 'nim'
+    | 'numba'
     | 'ocaml'
     | 'odin'
     | 'objc'
@@ -88,6 +92,7 @@ export type LanguageKey =
     | 'solidity'
     | 'spice'
     | 'spirv'
+    | 'sway'
     | 'swift'
     | 'tablegen'
     | 'toit'

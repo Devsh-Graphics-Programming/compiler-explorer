@@ -22,7 +22,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import os from 'os';
+import os from 'node:os';
 
 import {InstructionSet} from '../../types/instructionsets.js';
 import {OSType} from '../binaries/binary-utils.js';
@@ -30,8 +30,6 @@ import {logger} from '../logger.js';
 import * as utils from '../utils.js';
 
 import {BaseExecutionTriple, ExecutionSpecialty} from './base-execution-triple.js';
-
-// import fs from 'fs-extra';
 
 let _host_specialty = ExecutionSpecialty.cpu;
 
@@ -60,11 +58,14 @@ class CurrentHostExecHelper {
         const hostArch = os.arch();
         if (hostArch === 'arm64' && value === 'aarch64') {
             return true;
-        } else if (hostArch === 'arm' && value === 'arm32') {
+        }
+        if (hostArch === 'arm' && value === 'arm32') {
             return true;
-        } else if (hostArch === 'x64' && (value === 'amd64' || value === 'x86')) {
+        }
+        if (hostArch === 'x64' && (value === 'amd64' || value === 'x86')) {
             return true;
-        } else if (hostArch === 'ia32' && value === 'x86') {
+        }
+        if (hostArch === 'ia32' && value === 'x86') {
             return true;
         }
 

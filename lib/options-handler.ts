@@ -22,16 +22,17 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import https from 'https';
-import path from 'path';
+import https from 'node:https';
+import path from 'node:path';
 
-import fs from 'fs-extra';
+import fs from 'node:fs';
 import semverParser from 'semver';
 import _ from 'underscore';
+import urlJoin from 'url-join';
 
 import {AppDefaultArguments} from '../app.js';
 import {splitArguments} from '../shared/common-utils.js';
-import {CompilerInfo} from '../types/compiler.interfaces.js';
+import {CompilerInfo, Remote} from '../types/compiler.interfaces.js';
 import type {LanguageKey} from '../types/languages.interfaces.js';
 import type {Source} from '../types/source.interfaces.js';
 import type {ToolTypeKey} from '../types/tool.interfaces.js';
@@ -399,7 +400,7 @@ export class ClientOptionsHandler {
         const remoteId = this.getRemoteId(remoteUrl, language);
         if (!this.remoteLibs[remoteId]) {
             return new Promise(resolve => {
-                const url = remoteUrl + '/api/libraries/' + language;
+                const url = ClientOptionsHandler.getRemoteUrlForLibraries(remoteUrl, language);
                 logger.info(`Fetching remote libraries from ${url}`);
                 let fullData = '';
                 https.get(url, res => {
@@ -426,6 +427,14 @@ export class ClientOptionsHandler {
 
     async fetchRemoteLibrariesIfNeeded(language: LanguageKey, target: string) {
         await this.getRemoteLibraries(language, target);
+    }
+
+    static getFullRemoteUrl(remote: Remote): string {
+        return remote.target + remote.basePath;
+    }
+
+    static getRemoteUrlForLibraries(url: string, language: LanguageKey) {
+        return urlJoin(url, '/api/libraries', language);
     }
 
     async setCompilers(compilers: CompilerInfo[]) {
@@ -459,7 +468,10 @@ export class ClientOptionsHandler {
             }
 
             if (compiler.remote) {
-                await this.fetchRemoteLibrariesIfNeeded(compiler.lang, compiler.remote.target);
+                await this.fetchRemoteLibrariesIfNeeded(
+                    compiler.lang,
+                    ClientOptionsHandler.getFullRemoteUrl(compiler.remote),
+                );
             }
 
             for (const propKey of Object.keys(compiler)) {

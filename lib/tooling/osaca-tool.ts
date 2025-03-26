@@ -22,7 +22,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import fs from 'fs-extra';
+import fs from 'node:fs/promises';
 
 // import {CompilationInfo} from '../../types/compilation/compilation.interfaces.js';
 import {CompilationInfo} from '../../types/compilation/compilation.interfaces.js';
@@ -38,9 +38,7 @@ export class OSACATool extends BaseTool {
 
     async writeAsmFile(asmParser: IAsmParser, asm: string, filters: ParseFiltersAndOutputOptions, destination: string) {
         // Applying same filters as applied to compiler outpu
-        const filteredAsm = asmParser.process(asm, filters).asm.reduce(function (acc, line) {
-            return acc + line.text + '\n';
-        }, '');
+        const filteredAsm = asmParser.process(asm, filters).asm.reduce((acc, line) => acc + line.text + '\n', '');
         return fs.writeFile(destination, filteredAsm);
     }
 

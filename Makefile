@@ -38,7 +38,7 @@ info: node-installed ## print out some useful variables
 .PHONY: scripts
 scripts:
 	mkdir -p out/dist/etc/scripts/disasms
-	cp -R --update etc/scripts/disasms/* out/dist/etc/scripts/disasms
+	rsync -r -u etc/scripts/disasms/* out/dist/etc/scripts/disasms
 
 .PHONY: prereqs
 prereqs: $(NODE_MODULES)
@@ -56,10 +56,6 @@ lint: $(NODE_MODULES)  ## Checks if the source currently matches code convention
 .PHONY: lint-fix
 lint-fix: $(NODE_MODULES)  ## Checks if everything matches code conventions & fixes those which are trivial to do so
 	$(NPM) run lint
-
-.PHONY: ci-lint
-ci-lint: $(NODE_MODULES)
-	$(NPM) run ci-lint
 
 .PHONY: test
 test: $(NODE_MODULES)  ## Runs the tests

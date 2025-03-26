@@ -11,6 +11,12 @@
           - 'etc/config/ada.*.properties'
           - 'static/modes/ada-mode.ts'
 
+'lang-algol68':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'lib/compilers/gac.ts'
+          - 'etc/config/algol68.*.properties'
+
 'lang-android-java':
   - changed-files:
       - any-glob-to-any-file:
@@ -260,6 +266,12 @@
           - 'lib/compilers/nim.ts'
           - 'etc/config/nim.*.properties'
           - 'static/modes/nim-mode.ts'
+
+'lang-numba':
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'lib/compilers/numba.ts'
+          - 'etc/config/numba.*.properties'
 
 'lang-objc':
   - changed-files:

@@ -22,9 +22,10 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'path';
+import path from 'node:path';
 
-import fs from 'fs-extra';
+import fsSync from 'node:fs';
+import fs from 'node:fs/promises';
 import _ from 'underscore';
 
 import {logger} from '../logger.js';
@@ -44,15 +45,15 @@ export class StorageLocal extends StorageBase {
     constructor(httpRootDir: string, compilerProps: CompilerProps) {
         super(httpRootDir, compilerProps);
         this.storageFolder = path.normalize(compilerProps.ceProps('localStorageFolder', './lib/storage/data/'));
-        // Ensure we have a working storage dir before we have a chance to process anything
-        fs.ensureDirSync(this.storageFolder);
+        // Ensure we have a working storage dir before we have a chance to process anything.
+        fsSync.mkdirSync(this.storageFolder, {recursive: true});
         logger.info(`Using local storage solution on ${this.storageFolder}`);
     }
 
     async storeItem(item: StoredObject) {
         const filePath = path.join(this.storageFolder, item.uniqueSubHash);
         try {
-            await fs.writeJson(filePath, item, {encoding: 'utf8'});
+            await fs.writeFile(filePath, JSON.stringify(item), 'utf-8');
         } catch (err) {
             logger.error(`Caught exception while trying to store to ${path}`, err);
             throw err;
@@ -81,19 +82,18 @@ export class StorageLocal extends StorageBase {
                         uniqueSubHash: subHash,
                         alreadyPresent: false,
                     };
-                } else {
-                    const expectedPath = path.join(this.storageFolder, subHash);
-                    const item = await fs.readJson(expectedPath);
-                    /* If the hashes coincide, it means this config has already been stored.
-                     * Else, keep looking
-                     */
-                    if (item.fullHash === hash) {
-                        return {
-                            prefix: prefix,
-                            uniqueSubHash: subHash,
-                            alreadyPresent: true,
-                        };
-                    }
+                }
+                const expectedPath = path.join(this.storageFolder, subHash);
+                const item = JSON.parse(await fs.readFile(expectedPath, 'utf-8'));
+                /* If the hashes coincide, it means this config has already been stored.
+                 * Else, keep looking
+                 */
+                if (item.fullHash === hash) {
+                    return {
+                        prefix: prefix,
+                        uniqueSubHash: subHash,
+                        alreadyPresent: true,
+                    };
                 }
             }
         } catch (err) {
@@ -111,7 +111,7 @@ export class StorageLocal extends StorageBase {
         logger.info(`Expanding local id ${id} to ${expectedPath}`);
         try {
             const stats = await fs.stat(expectedPath);
-            const item = await fs.readJson(expectedPath);
+            const item = JSON.parse(await fs.readFile(expectedPath, 'utf-8'));
             return {
                 config: item.config,
                 specialMetadata: null,

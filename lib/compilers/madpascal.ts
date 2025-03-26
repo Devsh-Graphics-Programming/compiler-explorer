@@ -22,9 +22,9 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'path';
+import path from 'node:path';
 
-import fs from 'fs-extra';
+import fs from 'node:fs/promises';
 
 import {CompilationResult, ExecutionOptionsWithEnv} from '../../types/compilation/compilation.interfaces.js';
 import {PreliminaryCompilerInfo} from '../../types/compiler.interfaces.js';
@@ -57,27 +57,24 @@ export class MadPascalCompiler extends BaseCompiler {
         const filename = `${outputFilebase}.a65`;
         if (dirPath) {
             return path.join(dirPath, filename);
-        } else {
-            return filename;
         }
+        return filename;
     }
 
     getAssemblerOutputFilename(dirPath: string, outputFilebase: string) {
         const filename = `${outputFilebase}.obx`;
         if (dirPath) {
             return path.join(dirPath, filename);
-        } else {
-            return filename;
         }
+        return filename;
     }
 
     getListingFilename(dirPath: string, outputFilebase: string) {
         const filename = `${outputFilebase}.lst`;
         if (dirPath) {
             return path.join(dirPath, filename);
-        } else {
-            return filename;
         }
+        return filename;
     }
 
     override getOutputFilename(dirPath: string, outputFilebase: string, key?: any): string {
@@ -177,8 +174,7 @@ export class MadPascalCompiler extends BaseCompiler {
             return result;
         }
 
-        const content = await fs.readFile(listingFilename);
-        result.asm = this.postProcessObjdumpOutput(content.toString('utf8'));
+        result.asm = this.postProcessObjdumpOutput(await fs.readFile(listingFilename, 'utf8'));
 
         return result;
     }

@@ -22,9 +22,9 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'path';
+import path from 'node:path';
 
-import fs from 'fs-extra';
+import fs from 'node:fs/promises';
 import _ from 'underscore';
 
 import type {CompilationResult, ExecutionOptions} from '../../types/compilation/compilation.interfaces.js';
@@ -67,9 +67,8 @@ export class Cc65Compiler extends BaseCompiler {
     override optionsForFilter(filters: ParseFiltersAndOutputOptions, outputFilename: string) {
         if (filters.binary) {
             return ['-g', '-o', this.filename(outputFilename)];
-        } else {
-            return ['-g', '-S', '-c', '-o', this.filename(outputFilename)];
         }
+        return ['-g', '-S', '-c', '-o', this.filename(outputFilename)];
     }
 
     override getCompilerEnvironmentVariables(compilerflags: string) {

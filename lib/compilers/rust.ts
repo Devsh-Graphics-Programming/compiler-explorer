@@ -22,7 +22,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'path';
+import path from 'node:path';
 
 import {SemVer} from 'semver';
 import _ from 'underscore';
@@ -187,9 +187,8 @@ export class RustCompiler extends BaseCompiler {
         if (this.buildenvsetup) {
             const libraryDetails = await this.getRequiredLibraryVersions(key.libraries);
             return this.buildenvsetup.setup(key, dirPath, libraryDetails);
-        } else {
-            return [];
         }
+        return [];
     }
 
     override fixIncompatibleOptions(
@@ -247,7 +246,7 @@ export class RustCompiler extends BaseCompiler {
     }
 
     override optionsForFilter(filters: ParseFiltersAndOutputOptions, outputFilename: string, userOptions?: string[]) {
-        let options = ['-C', 'debuginfo=1', '-o', this.filename(outputFilename)];
+        let options = ['-C', 'debuginfo=2', '-o', this.filename(outputFilename)];
 
         const userRequestedEmit = _.any(unwrap(userOptions), opt => opt.includes('--emit'));
         if (filters.binary) {

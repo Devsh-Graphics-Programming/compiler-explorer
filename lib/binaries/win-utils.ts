@@ -22,9 +22,9 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'path';
+import path from 'node:path';
 
-import * as fs from 'fs-extra';
+import fs from 'node:fs/promises';
 
 import {ExecutionOptionsWithEnv} from '../../types/compilation/compilation.interfaces.js';
 import {BaseCompiler} from '../base-compiler.js';
@@ -104,6 +104,6 @@ export async function copyNeededDlls(
     const dlls = await winutils.get_dlls_used(executableFilename);
     for (const dll of dlls) {
         const infolder = path.join(dirPath, path.basename(dll));
-        await fs.copy(dll, infolder);
+        await fs.copyFile(dll, infolder);
     }
 }

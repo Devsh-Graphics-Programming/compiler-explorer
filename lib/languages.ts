@@ -22,9 +22,9 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'path';
+import path from 'node:path';
 
-import fs from 'fs-extra';
+import fs from 'node:fs';
 
 import type {Language, LanguageKey} from '../types/languages.interfaces.js';
 
@@ -43,6 +43,30 @@ type DefKeys =
 type LanguageDefinition = Pick<Language, DefKeys>;
 
 const definitions: Record<LanguageKey, LanguageDefinition> = {
+    coccinelle_for_c: {
+        name: 'C with Coccinelle',
+        monaco: 'nc',
+        extensions: ['.c', '.h'],
+        alias: [],
+        logoUrl: 'c.svg',
+        logoUrlDark: null,
+        formatter: 'clangformat',
+        previewFilter: /^\s*#include/,
+        monacoDisassembly: null,
+        digitSeparator: "'",
+    },
+    coccinelle_for_cpp: {
+        name: 'C++ with Coccinelle',
+        monaco: 'cppp',
+        extensions: ['.cpp', '.h'],
+        alias: [],
+        logoUrl: 'c++.svg',
+        logoUrlDark: null,
+        formatter: 'clangformat',
+        previewFilter: /^\s*#include/,
+        monacoDisassembly: null,
+        digitSeparator: "'",
+    },
     jakt: {
         name: 'Jakt',
         monaco: 'jakt',
@@ -73,6 +97,17 @@ const definitions: Record<LanguageKey, LanguageDefinition> = {
         alias: [],
         logoUrl: 'ada.svg',
         logoUrlDark: 'ada-dark.svg',
+        formatter: null,
+        previewFilter: null,
+        monacoDisassembly: null,
+    },
+    algol68: {
+        name: 'Algol68',
+        monaco: 'algol68',
+        extensions: ['.a68'],
+        alias: [],
+        logoUrl: '',
+        logoUrlDark: '',
         formatter: null,
         previewFilter: null,
         monacoDisassembly: null,
@@ -567,6 +602,17 @@ const definitions: Record<LanguageKey, LanguageDefinition> = {
         previewFilter: null,
         monacoDisassembly: null,
     },
+    numba: {
+        name: 'Numba',
+        monaco: 'python',
+        extensions: ['.py'],
+        alias: [],
+        logoUrl: 'numba.svg',
+        logoUrlDark: null,
+        formatter: null,
+        previewFilter: null,
+        monacoDisassembly: null,
+    },
     objc: {
         name: 'Objective-C',
         monaco: 'objective-c',
@@ -905,6 +951,18 @@ const definitions: Record<LanguageKey, LanguageDefinition> = {
         formatter: null,
         previewFilter: null,
         monacoDisassembly: null,
+    },
+    sway: {
+        name: 'sway',
+        monaco: 'sway',
+        extensions: ['.sw'],
+        alias: [],
+        logoUrl: 'sway.svg',
+        logoUrlDark: null,
+        formatter: null,
+        previewFilter: null,
+        monacoDisassembly: null,
+        digitSeparator: '_',
     },
 };
 

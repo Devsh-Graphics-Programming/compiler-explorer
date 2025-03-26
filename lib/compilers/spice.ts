@@ -22,7 +22,7 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'path';
+import path from 'node:path';
 
 import Semver from 'semver';
 import _ from 'underscore';
@@ -79,7 +79,7 @@ export class SpiceCompiler extends BaseCompiler {
         }
 
         if (filters.binary || filters.binaryObject) {
-            options.push('-obj');
+            options.push('--dump-object-file');
         }
 
         this.optLevelSuffix = '';

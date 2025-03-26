@@ -23,10 +23,10 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 import {Buffer} from 'buffer';
-import crypto from 'crypto';
-import path from 'path';
+import crypto from 'node:crypto';
+import path from 'node:path';
 
-import fs from 'fs-extra';
+import fs from 'node:fs';
 import {LRUCache} from 'lru-cache';
 
 import type {GetResult} from '../../types/cache.interfaces.js';
@@ -85,11 +85,10 @@ export class OnDiskCache extends BaseCache {
             .filter(Boolean);
 
         // Sort oldest first
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+
         // @ts-ignore filter(Boolean) should have sufficed but doesn't
         info.sort((x, y) => x.sort - y.sort);
         for (const i of info) {
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
             // @ts-ignore
             this.cache.set(i.key, i.data);
         }
@@ -107,7 +106,7 @@ export class OnDiskCache extends BaseCache {
         if (!cached) return {hit: false};
 
         try {
-            const data = await fs.readFile(cached.path);
+            const data = await fs.promises.readFile(cached.path);
             return {hit: true, data: data};
         } catch (err) {
             logger.error(`error reading '${key}' from disk cache: `, err);
@@ -122,8 +121,8 @@ export class OnDiskCache extends BaseCache {
         };
         // Write to a temp file and then rename
         const tempFile = info.path + `.tmp.${crypto.randomUUID()}`;
-        await fs.writeFile(tempFile, value);
-        await fs.rename(tempFile, info.path);
+        await fs.promises.writeFile(tempFile, value);
+        await fs.promises.rename(tempFile, info.path);
         this.cache.set(key, info);
     }
 }

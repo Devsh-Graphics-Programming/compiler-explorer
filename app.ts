@@ -22,16 +22,17 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import child_process from 'child_process';
-import os from 'os';
-import path from 'path';
-import process from 'process';
-import url from 'url';
+import child_process from 'node:child_process';
+import os from 'node:os';
+import path from 'node:path';
+import process from 'node:process';
+import url from 'node:url';
 
+import * as fsSync from 'node:fs';
+import fs from 'node:fs/promises';
 import * as Sentry from '@sentry/node';
 import compression from 'compression';
 import express from 'express';
-import fs from 'fs-extra';
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
 import morgan from 'morgan';
@@ -60,14 +61,15 @@ import {FormattingService} from './lib/formatting-service.js';
 import {AssemblyDocumentationController} from './lib/handlers/api/assembly-documentation-controller.js';
 import {FormattingController} from './lib/handlers/api/formatting-controller.js';
 import {HealthcheckController} from './lib/handlers/api/healthcheck-controller.js';
+import {NoScriptController} from './lib/handlers/api/noscript-controller.js';
 import {SiteTemplateController} from './lib/handlers/api/site-template-controller.js';
 import {SourceController} from './lib/handlers/api/source-controller.js';
 import {CompileHandler} from './lib/handlers/compile.js';
-import {cached, csp} from './lib/handlers/middleware.js';
+import {cached, createFormDataHandler, csp} from './lib/handlers/middleware.js';
 import {NoScriptHandler} from './lib/handlers/noscript.js';
 import {RouteAPI, ShortLinkMetaData} from './lib/handlers/route-api.js';
 import {languages as allLanguages} from './lib/languages.js';
-import {logger, logToLoki, logToPapertrail, makeLogStream, suppressConsoleLog} from './lib/logger.js';
+import {logToLoki, logToPapertrail, logger, makeLogStream, suppressConsoleLog} from './lib/logger.js';
 import {setupMetricsServer} from './lib/metrics-server.js';
 import {ClientOptionsHandler} from './lib/options-handler.js';
 import * as props from './lib/properties.js';
@@ -192,12 +194,12 @@ logger.debug(`Distpath=${distPath}`);
 const gitReleaseName = (() => {
     // Use the canned git_hash if provided
     const gitHashFilePath = path.join(distPath, 'git_hash');
-    if (opts.dist && fs.existsSync(gitHashFilePath)) {
-        return fs.readFileSync(gitHashFilePath).toString().trim();
+    if (opts.dist && fsSync.existsSync(gitHashFilePath)) {
+        return fsSync.readFileSync(gitHashFilePath).toString().trim();
     }
 
     // Just if we have been cloned and not downloaded (Thanks David!)
-    if (fs.existsSync('.git/')) {
+    if (fsSync.existsSync('.git/')) {
         return child_process.execSync('git rev-parse HEAD').toString().trim();
     }
 
@@ -208,8 +210,8 @@ const gitReleaseName = (() => {
 const releaseBuildNumber = (() => {
     // Use the canned build only if provided
     const releaseBuildPath = path.join(distPath, 'release_build');
-    if (opts.dist && fs.existsSync(releaseBuildPath)) {
-        return fs.readFileSync(releaseBuildPath).toString().trim();
+    if (opts.dist && fsSync.existsSync(releaseBuildPath)) {
+        return fsSync.readFileSync(releaseBuildPath).toString().trim();
     }
     return '';
 })();
@@ -270,13 +272,14 @@ const isDevMode = () => process.env.NODE_ENV !== 'production';
 function getFaviconFilename() {
     if (isDevMode()) {
         return 'favicon-dev.ico';
-    } else if (opts.env && opts.env.includes('beta')) {
-        return 'favicon-beta.ico';
-    } else if (opts.env && opts.env.includes('staging')) {
-        return 'favicon-staging.ico';
-    } else {
-        return 'favicon.ico';
     }
+    if (opts.env?.includes('beta')) {
+        return 'favicon-beta.ico';
+    }
+    if (opts.env?.includes('staging')) {
+        return 'favicon-staging.ico';
+    }
+    return 'favicon.ico';
 }
 
 const propHierarchy = [
@@ -318,9 +321,8 @@ const languages = (() => {
         // Always keep cmake for IDE mode, just in case
         filteredLangs[allLanguages.cmake.id] = allLanguages.cmake;
         return filteredLangs;
-    } else {
-        return allLanguages;
     }
+    return allLanguages;
 })();
 
 if (Object.keys(languages).length === 0) {
@@ -409,7 +411,7 @@ async function setupWebPackDevMiddleware(router: express.Router) {
 }
 
 async function setupStaticMiddleware(router: express.Router) {
-    const staticManifest = await fs.readJson(path.join(distPath, 'manifest.json'));
+    const staticManifest = JSON.parse(await fs.readFile(path.join(distPath, 'manifest.json'), 'utf-8'));
 
     if (staticUrl) {
         logger.info(`  using static files from '${staticUrl}'`);
@@ -426,10 +428,9 @@ async function setupStaticMiddleware(router: express.Router) {
     pugRequireHandler = path => {
         if (Object.prototype.hasOwnProperty.call(staticManifest, path)) {
             return urljoin(staticRoot, staticManifest[path]);
-        } else {
-            logger.error(`failed to locate static asset '${path}' in manifest`);
-            return '';
         }
+        logger.error(`failed to locate static asset '${path}' in manifest`);
+        return '';
     };
 }
 
@@ -471,7 +472,7 @@ function startListening(server: express.Express) {
     if (ss) {
         // ms (5 min default)
         const idleTimeout = process.env.IDLE_TIMEOUT;
-        const timeout = (idleTimeout === undefined ? 300 : parseInt(idleTimeout)) * 1000;
+        const timeout = (idleTimeout === undefined ? 300 : Number.parseInt(idleTimeout)) * 1000;
         if (idleTimeout) {
             const exit = () => {
                 logger.info('Inactivity timeout reached, exiting.');
@@ -496,7 +497,7 @@ function startListening(server: express.Express) {
     });
     startupGauge.set(process.uptime());
     const startupDurationMs = Math.floor(process.uptime() * 1000);
-    if (isNaN(parseInt(_port))) {
+    if (Number.isNaN(Number.parseInt(_port))) {
         // unix socket, not a port number...
         logger.info(`  Listening on socket: //${_port}/`);
         logger.info(`  Startup duration: ${startupDurationMs}ms`);
@@ -522,8 +523,8 @@ const awsProps = props.propsFor('aws');
 async function main() {
     await aws.initConfig(awsProps);
     // Initialise express and then sentry. Sentry as early as possible to catch errors during startup.
-    const webServer = express(),
-        router = express.Router();
+    const webServer = express();
+    const router = express.Router();
 
     SetupSentry(aws.getConfig('sentryDsn'), ceProps, releaseBuildNumber, gitReleaseName, defArgs);
 
@@ -546,10 +547,11 @@ async function main() {
     const compileHandler = new CompileHandler(compilationEnvironment, awsProps);
     const storageType = getStorageTypeByKey(storageSolution);
     const storageHandler = new storageType(httpRoot, compilerProps, awsProps);
-    const compilerFinder = new CompilerFinder(compileHandler, compilerProps, awsProps, defArgs, clientOptionsHandler);
+    const compilerFinder = new CompilerFinder(compileHandler, compilerProps, defArgs, clientOptionsHandler);
 
     const isExecutionWorker = ceProps<boolean>('execqueue.is_worker', false);
     const healthCheckFilePath = ceProps('healthCheckFilePath', null) as string | null;
+    const formDataHandler = createFormDataHandler();
 
     const siteTemplateController = new SiteTemplateController();
     const sourceController = new SourceController(sources);
@@ -561,6 +563,7 @@ async function main() {
         isExecutionWorker,
     );
     const formattingController = new FormattingController(formattingService);
+    const noScriptController = new NoScriptController(compileHandler, formDataHandler);
 
     logger.info('=======================================');
     if (gitReleaseName) logger.info(`  git release ${gitReleaseName}`);
@@ -587,9 +590,8 @@ async function main() {
             if (initialFindResults.foundClash) {
                 // If we are forced to have no clashes, throw an error with some explanation
                 throw new Error('Clashing compilers in the current environment found!');
-            } else {
-                logger.info('No clashing ids found, continuing normally...');
             }
+            logger.info('No clashing ids found, continuing normally...');
         }
     }
 
@@ -688,8 +690,7 @@ async function main() {
         .use(Sentry.Handlers.errorHandler)
         // eslint-disable-next-line no-unused-vars
         .use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-            const status =
-                err.status || err.statusCode || err.status_code || (err.output && err.output.statusCode) || 500;
+            const status = err.status || err.statusCode || err.status_code || err.output?.statusCode || 500;
             const message = err.message || 'Internal Server Error';
             res.status(status);
             res.render('error', renderConfig({error: {code: status, message: message}}));
@@ -698,7 +699,7 @@ async function main() {
             }
         });
 
-    const sponsorConfig = loadSponsorsFromString(fs.readFileSync(configDir + '/sponsors.yaml', 'utf8'));
+    const sponsorConfig = loadSponsorsFromString(await fs.readFile(configDir + '/sponsors.yaml', 'utf8'));
 
     function renderConfig(extra: Record<string, any>, urlOptions?: any) {
         const urlOptionsAllowed = ['readOnly', 'hideEditorToolbars', 'language'];
@@ -736,7 +737,7 @@ async function main() {
         req: express.Request,
         res: express.Response,
     ) {
-        const embedded = req.query.embedded === 'true' ? true : false;
+        const embedded = req.query.embedded === 'true';
 
         res.render(
             embedded ? 'embed' : 'index',
@@ -753,7 +754,7 @@ async function main() {
         );
     }
 
-    const embeddedHandler = function (req: express.Request, res: express.Response) {
+    const embeddedHandler = (req: express.Request, res: express.Response) => {
         res.render(
             'embed',
             renderConfig(
@@ -853,9 +854,10 @@ async function main() {
         .use(sourceController.createRouter())
         .use(assemblyDocumentationController.createRouter())
         .use(formattingController.createRouter())
+        .use(noScriptController.createRouter())
         .get('/g/:id', oldGoogleUrlHandler);
 
-    noscriptHandler.InitializeRoutes({limit: ceProps('bodyParserLimit', maxUploadSize)});
+    noscriptHandler.InitializeRoutes();
     routeApi.InitializeRoutes();
 
     if (!defArgs.doCache) {

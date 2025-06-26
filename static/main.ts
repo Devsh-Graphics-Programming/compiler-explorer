@@ -28,7 +28,7 @@ import {SentryCapture, SetupSentry, setSentryLayout} from './sentry.js';
 SetupSentry();
 
 import 'whatwg-fetch';
-import 'popper.js';
+import '@popperjs/core';
 import 'bootstrap';
 
 import $ from 'jquery';
@@ -58,30 +58,30 @@ import {SimpleCook} from './widgets/simplecook.js';
 import {setupSiteTemplateWidgetButton} from './widgets/site-templates-widget.js';
 
 import {Language, LanguageKey} from '../types/languages.interfaces.js';
-import {ComponentConfig, EmptyCompilerState, StateWithId, StateWithLanguage} from './components.interfaces.js';
+import {ComponentConfig, ComponentStateMap, GoldenLayoutConfig} from './components.interfaces.js';
+import {createDragSource, createLayoutItem, toGoldenLayoutConfig} from './components.js';
 import {CompilerExplorerOptions} from './global.js';
 
 import * as utils from '../shared/common-utils.js';
-import {ParseFiltersAndOutputOptions} from './features/filters.interfaces.js';
+import {ParseFiltersAndOutputOptions} from '../types/features/filters.interfaces.js';
+import * as BootstrapUtils from './bootstrap-utils.js';
 import {localStorage, sessionThenLocalStorage} from './local.js';
 import {Printerinator} from './print-view.js';
 import {setupRealDark, takeUsersOutOfRealDark} from './real-dark.js';
 import {formatISODate, updateAndCalcTopBarHeight} from './utils.js';
 
 const logos = require.context('../views/resources/logos', false, /\.(png|svg)$/);
-
 const siteTemplateScreenshots = require.context('../views/resources/template_screenshots', false, /\.png$/);
-
-if (!window.PRODUCTION && !options.embedded) {
-    require('./tests/_all');
-}
+import changelogDocument from './generated/changelog.pug';
+import cookiesDocument from './generated/cookies.pug';
+import privacyDocument from './generated/privacy.pug';
 
 //css
-require('bootstrap/dist/css/bootstrap.min.css');
-require('golden-layout/src/css/goldenlayout-base.css');
-require('tom-select/dist/css/tom-select.bootstrap4.css');
-require('./styles/colours.scss');
-require('./styles/explorer.scss');
+import 'bootstrap/dist/css/bootstrap.min.css';
+import 'golden-layout/src/css/goldenlayout-base.css';
+import 'tom-select/dist/css/tom-select.bootstrap5.css';
+import './styles/colours.scss';
+import './styles/explorer.scss';
 
 // Check to see if the current unload is a UI reset.
 // Forgive me the global usage here
@@ -90,8 +90,8 @@ const simpleCooks = new SimpleCook();
 const historyWidget = new HistoryWidget();
 
 const policyDocuments = {
-    cookies: require('./generated/cookies.pug').default,
-    privacy: require('./generated/privacy.pug').default,
+    cookies: cookiesDocument,
+    privacy: privacyDocument,
 };
 
 function setupSettings(hub: Hub): [Themer, SiteSettings] {
@@ -192,7 +192,7 @@ function setupButtons(options: CompilerExplorerOptions, hub: Hub) {
 
     $('#changes').on('click', () => {
         // TODO(jeremy-rifkin): Fix types
-        alertSystem.alert('Changelog', $(require('./generated/changelog.pug').default.text) as any);
+        alertSystem.alert('Changelog', changelogDocument.text);
     });
 
     $.get(window.location.origin + window.httpRoot + 'bits/icons.html')
@@ -225,7 +225,7 @@ function setupButtons(options: CompilerExplorerOptions, hub: Hub) {
             window.location.reload();
         });
 
-        $('#history').modal();
+        BootstrapUtils.showModal('#history');
     });
 
     $('#ui-apply-default-font-scale').on('click', () => {
@@ -272,8 +272,7 @@ function configFromEmbedded(embeddedUrl: string, defaultLangId: string) {
     return url.deserialiseState(embeddedUrl);
 }
 
-// TODO(jeremy-rifkin): Unsure of the type, just typing enough for `content` at the moment
-function fixBugsInConfig(config: Record<string, any> & {content?: any[]}) {
+function fixBugsInConfig(config: Partial<GoldenLayout.Config & {activeItemIndex?: number}>): void {
     if (config.activeItemIndex && config.activeItemIndex >= unwrap(config.content).length) {
         config.activeItemIndex = unwrap(config.content).length - 1;
     }
@@ -285,18 +284,12 @@ function fixBugsInConfig(config: Record<string, any> & {content?: any[]}) {
     }
 }
 
-type ConfigType = {
-    settings: {
-        showPopoutIcon: boolean;
-    };
-    content: {
-        type: string;
-        content: (ComponentConfig<Partial<StateWithId & StateWithLanguage>> | ComponentConfig<EmptyCompilerState>)[];
-    }[];
-};
-
-function findConfig(defaultConfig: ConfigType, options: CompilerExplorerOptions, defaultLangId: string) {
-    let config;
+function findConfig(
+    defaultConfig: GoldenLayoutConfig,
+    options: CompilerExplorerOptions,
+    defaultLangId: string,
+): GoldenLayoutConfig {
+    let config: any;
     if (!options.embedded) {
         if (options.slides) {
             const presentation = new Presentation(unwrap(window.compilerExplorerOptions.slides).length);
@@ -346,7 +339,7 @@ function findConfig(defaultConfig: ConfigType, options: CompilerExplorerOptions,
                 const savedState = sessionThenLocalStorage.get('gl', null);
                 if (savedState) config = JSON.parse(savedState);
             }
-            if (!config.content || config.content.length === 0) {
+            if (!config?.content || config.content?.length === 0) {
                 config = defaultConfig;
             }
         }
@@ -367,7 +360,8 @@ function findConfig(defaultConfig: ConfigType, options: CompilerExplorerOptions,
     removeOrphanedMaximisedItemFromConfig(config);
     fixBugsInConfig(config);
 
-    return config;
+    // TODO(#7808): Replace unsafe casting with fromGoldenLayoutConfig() validation
+    return config as GoldenLayoutConfig;
 }
 
 function initializeResetLayoutLink() {
@@ -530,7 +524,7 @@ function initShortlinkInfoButton() {
         buttonText.html('');
 
         const button = $('.shortlinkInfo');
-        button.popover({
+        BootstrapUtils.initPopover(button, {
             html: true,
             title: 'Link created',
             content: formatISODate(dt, true),
@@ -582,13 +576,10 @@ function start() {
         jsCookie = jsCookie.withAttributes({domain: cookieDomain[0]});
     }
 
-    const defaultConfig = {
+    const defaultConfig: GoldenLayoutConfig = {
         settings: {showPopoutIcon: false},
         content: [
-            {
-                type: 'row',
-                content: [Components.getEditor(defaultLangId, 1), Components.getCompiler(1, defaultLangId)],
-            },
+            createLayoutItem('row', [Components.getEditor(defaultLangId, 1), Components.getCompiler(1, defaultLangId)]),
         ],
     };
 
@@ -612,22 +603,32 @@ function start() {
 
     let layout: GoldenLayout;
     let hub: Hub;
+    let themer: Themer;
+    let settings: SiteSettings;
+
+    function initializeLayout(
+        config: GoldenLayoutConfig,
+        root: JQuery<HTMLElement>,
+    ): [GoldenLayout, Hub, Themer, SiteSettings] {
+        const layout = new GoldenLayout(toGoldenLayoutConfig(config), root);
+        const hub = new Hub(layout, subLangId, defaultLangId);
+        const [themer, settings] = setupSettings(hub);
+        hub.initLayout();
+        return [layout, hub, themer, settings];
+    }
+
     try {
-        layout = new GoldenLayout(config, root);
-        hub = new Hub(layout, subLangId, defaultLangId);
+        [layout, hub, themer, settings] = initializeLayout(config, root);
     } catch (e) {
         SentryCapture(e, 'goldenlayout/hub setup');
+        console.log('Exception processing state, resetting layout to default', e);
 
         if (document.URL.includes('/z/')) {
             document.location = document.URL.replace('/z/', '/resetlayout/');
         }
 
-        layout = new GoldenLayout(defaultConfig, root);
-        hub = new Hub(layout, subLangId, defaultLangId);
+        [layout, hub, themer, settings] = initializeLayout(defaultConfig, root);
     }
-
-    const [themer, settings] = setupSettings(hub);
-    hub.initLayout();
 
     setSentryLayout(layout);
 
@@ -677,18 +678,21 @@ function start() {
         setupButtons(options, hub);
     }
 
-    const addDropdown = $('#addDropdown');
-
-    function setupAdd<C>(thing: JQuery, func: () => ComponentConfig<C>) {
-        (layout.createDragSource(thing, func as any) as any)._dragListener.on('dragStart', () => {
-            addDropdown.dropdown('toggle');
+    function setupAdd<K extends keyof ComponentStateMap>(thing: JQuery, func: () => ComponentConfig<K>) {
+        createDragSource(layout, thing, func).on('dragStart', () => {
+            const addDropdown = unwrap(
+                BootstrapUtils.getDropdownInstance('#addDropdown'),
+                'Dropdown instance not found for #addDropdown',
+            );
+            addDropdown.toggle();
         });
 
         thing.on('click', () => {
+            const config = func();
             if (hub.hasTree()) {
-                hub.addInEditorStackIfPossible(func() as any);
+                hub.addInEditorStackIfPossible(config);
             } else {
-                hub.addAtRoot(func() as any);
+                hub.addAtRoot(config);
             }
         });
     }
@@ -776,7 +780,7 @@ function start() {
 
     History.trackHistory(layout);
     setupSiteTemplateWidgetButton(siteTemplateScreenshots, layout);
-    new Sharing(layout);
+    if (!options.embedded) new Sharing(layout);
     new Printerinator(hub, themer);
 }
 

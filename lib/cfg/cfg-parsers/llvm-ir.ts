@@ -48,7 +48,7 @@ export class LlvmIrCfgParser extends BaseCFGParser {
         super(instructionSetInfo);
         this.functionDefinition = /^define .+ @("?[^"]+"?)\(/;
         this.labelRe = /^("?[\w$.-]+"?):\s*(;.*)?$/;
-        this.labelReference = /%("?[\w$.-]+"?)/g;
+        this.labelReference = /%("?[\w$.<>-]+"?)/g;
     }
 
     override filterData(asmArr: AssemblyLine[]) {
@@ -198,6 +198,8 @@ export class LlvmIrCfgParser extends BaseCFGParser {
                 terminator = 'invoke';
             } else if (terminatingInstruction.includes('callbr')) {
                 terminator = 'callbr';
+            } else if (terminatingInstruction.includes('catchswitch')) {
+                terminator = 'catchswitch';
             } else {
                 terminator = terminatingInstruction.trim().split(' ')[0].replaceAll(',', '');
             }
@@ -209,6 +211,8 @@ export class LlvmIrCfgParser extends BaseCFGParser {
                     break;
                 }
                 case 'br': {
+                    // br label %\"<example::MyAllocator as core::alloc::global::GlobalAlloc>::alloc::h48bb40aafe1fee0e.exit\""
+
                     // br label %16, !dbg !41
                     // br i1 %13, label %59, label %14, !dbg !41
                     if (labels.length === 1) {
@@ -327,17 +331,53 @@ export class LlvmIrCfgParser extends BaseCFGParser {
                 }
                 case 'catchswitch': {
                     // %cs2 = catchswitch within %parenthandler [label %handler0] unwind label %cleanup
-                    // TODO
+                    const handlersOrUnwindPart = terminatingInstruction.slice(
+                        terminatingInstruction.lastIndexOf('[label '),
+                    );
+                    const catchswitchLabels = [...handlersOrUnwindPart.matchAll(this.labelReference)].map(m => m[1]);
+
+                    for (const label of catchswitchLabels) {
+                        edges.push({
+                            from: bb.nameId,
+                            to: label,
+                            arrows: 'to',
+                            color: 'blue',
+                        });
+                    }
                     break;
                 }
                 case 'catchret': {
                     // catchret from %catch to label %continue
-                    // TODO
+                    const catchretLabelsPart = terminatingInstruction.slice(
+                        terminatingInstruction.lastIndexOf('to label'),
+                    );
+                    const catchretLabels = [...catchretLabelsPart.matchAll(this.labelReference)].map(m => m[1]);
+                    // Should be a single one, but sticking to the regular handling
+                    for (const label of catchretLabels) {
+                        edges.push({
+                            from: bb.nameId,
+                            to: label,
+                            arrows: 'to',
+                            color: 'blue',
+                        });
+                    }
                     break;
                 }
                 case 'cleanupret': {
                     // cleanupret from %cleanup unwind label %continue
-                    // TODO
+                    const continueLabelsPart = terminatingInstruction.slice(
+                        terminatingInstruction.lastIndexOf('unwind label'),
+                    );
+                    const continueLabels = [...continueLabelsPart.matchAll(this.labelReference)].map(m => m[1]);
+                    // Should be a single one, but sticking to the regular handling
+                    for (const label of continueLabels) {
+                        edges.push({
+                            from: bb.nameId,
+                            to: label,
+                            arrows: 'to',
+                            color: 'blue',
+                        });
+                    }
                     break;
                 }
                 default: {

@@ -38,6 +38,7 @@ import * as exec from '../lib/exec.js';
 import * as properties from '../lib/properties.js';
 import {SymbolStore} from '../lib/symbol-store.js';
 import * as utils from '../lib/utils.js';
+import {processAsm} from './utils.js';
 
 import {makeFakeCompilerInfo, resolvePathFromTestRoot} from './utils.js';
 
@@ -111,6 +112,22 @@ describe('Basic demangling', () => {
         ]);
     });
 
+    it('One quoted label and some asm', () => {
+        const result = {asm: [{text: '"_Z6squarei":'}, {text: '  ret'}]};
+
+        const demangler = new DummyCppDemangler(cppfiltpath, new DummyCompiler(), ['-n']);
+
+        return Promise.all([
+            demangler
+                .process(result)
+                .then(output => {
+                    expect(output.asm[0].text).toEqual('"square(int)":');
+                    expect(output.asm[1].text).toEqual('  ret');
+                })
+                .catch(catchCppfiltNonexistence),
+        ]);
+    });
+
     it('One label and use of a label', () => {
         const result = {asm: [{text: '_Z6squarei:'}, {text: '  mov eax, $_Z6squarei'}]};
 
@@ -122,6 +139,22 @@ describe('Basic demangling', () => {
                 .then(output => {
                     expect(output.asm[0].text).toEqual('square(int):');
                     expect(output.asm[1].text).toEqual('  mov eax, $square(int)');
+                })
+                .catch(catchCppfiltNonexistence),
+        ]);
+    });
+
+    it('One quoted label and use of a label', () => {
+        const result = {asm: [{text: '"_Z6squarei":'}, {text: '  mov eax, $"_Z6squarei"'}]};
+
+        const demangler = new DummyCppDemangler(cppfiltpath, new DummyCompiler(), ['-n']);
+
+        return Promise.all([
+            demangler
+                .process(result)
+                .then(output => {
+                    expect(output.asm[0].text).toEqual('"square(int)":');
+                    expect(output.asm[1].text).toEqual('  mov eax, $"square(int)"');
                 })
                 .catch(catchCppfiltNonexistence),
         ]);
@@ -159,15 +192,9 @@ describe('Basic demangling', () => {
             demangler
                 .process(result)
                 .then(output => {
-                    if (process.platform === 'win32') {
-                        expect(output.asm[0].text).toEqual(
-                            'jmp     qword ptr [rip + core::fmt::num::imp::<impl core::fmt::Display for usize>::fmt@GOTPCREL]',
-                        );
-                    } else {
-                        expect(output.asm[0].text).toEqual(
-                            'jmp     qword ptr [rip + core::fmt::num::imp::<impl core::fmt::Display for usize>::fmt::h7bbbd896a38dccca@GOTPCREL]',
-                        );
-                    }
+                    expect(output.asm[0].text).toEqual(
+                        'jmp     qword ptr [rip + core::fmt::num::imp::<impl core::fmt::Display for usize>::fmt::h7bbbd896a38dccca@GOTPCREL]',
+                    );
                 })
                 .catch(catchCppfiltNonexistence),
         ]);
@@ -325,6 +352,15 @@ async function DoDemangleTest(filename: string) {
     await expect(demangler.process(resultIn)).resolves.toEqual(resultOut);
 }
 
+async function DoDemangleTestWithLabels(filename: string) {
+    const asm = processAsm(filename, {labels: true});
+    delete asm.parsingTime;
+    delete asm.filteredCount;
+
+    const demangler = new DummyCppDemangler(cppfiltpath, new DummyCompiler(), ['-n']);
+    await expect(demangler.process(asm)).resolves.toMatchFileSnapshot(filename + '.json');
+}
+
 if (process.platform === 'linux') {
     describe('File demangling', () => {
         const testcasespath = resolvePathFromTestRoot('demangle-cases');
@@ -339,6 +375,11 @@ if (process.platform === 'linux') {
                 it(filename, async () => {
                     await DoDemangleTest(path.join(testcasespath, filename));
                 });
+                if (filename !== 'bug-1336-first-20000-lines.asm') {
+                    it(`demangles ${filename} with labels`, async () => {
+                        await DoDemangleTestWithLabels(path.join(testcasespath, filename));
+                    });
+                }
             }
         }
     });

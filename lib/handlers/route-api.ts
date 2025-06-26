@@ -26,48 +26,25 @@ import zlib from 'node:zlib';
 
 import express from 'express';
 
-import {AppDefaultArguments, CompilerExplorerOptions} from '../../app.js';
 import {isString} from '../../shared/common-utils.js';
 import {Language} from '../../types/languages.interfaces.js';
-import {assert} from '../assert.js';
+import {assert, unwrap} from '../assert.js';
 import {ClientStateGoldenifier, ClientStateNormalizer} from '../clientstate-normalizer.js';
 import {ClientState} from '../clientstate.js';
-import {CompilationEnvironment} from '../compilation-env.js';
 import {logger} from '../logger.js';
-import {ClientOptionsHandler} from '../options-handler.js';
-import {PropertyGetter} from '../properties.interfaces.js';
 import {SentryCapture} from '../sentry.js';
 import {ExpandedShortLink} from '../storage/base.js';
 import {StorageBase} from '../storage/index.js';
 import * as utils from '../utils.js';
 
 import {ApiHandler} from './api.js';
-import {CompileHandler} from './compile.js';
+import {HandlerConfig, ShortLinkMetaData} from './handler.interfaces.js';
 import {cached, csp} from './middleware.js';
-
-export type HandlerConfig = {
-    compileHandler: CompileHandler;
-    clientOptionsHandler: ClientOptionsHandler;
-    storageHandler: StorageBase;
-    ceProps: PropertyGetter;
-    opts: CompilerExplorerOptions;
-    defArgs: AppDefaultArguments;
-    renderConfig: any;
-    renderGoldenLayout: any;
-    compilationEnvironment: CompilationEnvironment;
-};
-
-export type ShortLinkMetaData = {
-    ogDescription?: string;
-    ogAuthor?: string;
-    ogTitle?: string;
-    ogCreated?: Date;
-};
 
 export class RouteAPI {
     renderGoldenLayout: any;
     storageHandler: StorageBase;
-    apiHandler: ApiHandler;
+    apiHandler: ApiHandler | undefined;
 
     constructor(
         private readonly router: express.Router,
@@ -89,17 +66,19 @@ export class RouteAPI {
 
             this.apiHandler.setReleaseInfo(config.defArgs.gitReleaseName, config.defArgs.releaseBuildNumber);
         } else {
-            this.apiHandler = undefined as any;
+            this.apiHandler = undefined;
         }
     }
 
-    InitializeRoutes() {
+    initializeRoutes() {
+        if (this.apiHandler) {
+            this.router.use('/api', this.apiHandler.handle);
+        }
         this.router
-            .use('/api', this.apiHandler.handle)
             .get('/z/:id', cached, csp, this.storedStateHandler.bind(this))
             .get('/z/:id/code/:session', cached, csp, this.storedCodeHandler.bind(this))
             .get('/resetlayout/:id', cached, csp, this.storedStateHandlerResetLayout.bind(this))
-            .get('/clientstate/:clientstatebase64([^]*)', cached, csp, this.unstoredStateHandler.bind(this))
+            .get(/^\/clientstate\/(?<clientstatebase64>.*)/, cached, csp, this.unstoredStateHandler.bind(this))
             .get('/fromsimplelayout', cached, csp, this.simpleLayoutHandler.bind(this));
     }
 
@@ -111,7 +90,7 @@ export class RouteAPI {
             .then(result => {
                 const config = JSON.parse(result.config);
 
-                let clientstate: ClientState | null = null;
+                let clientstate: ClientState | null;
                 if (config.content) {
                     const normalizer = new ClientStateNormalizer();
                     normalizer.fromGoldenLayout(config);
@@ -172,12 +151,24 @@ export class RouteAPI {
         return goldenifier.golden;
     }
 
-    unstoredStateHandler(req: express.Request, res: express.Response) {
-        const state = extractJsonFromBufferAndInflateIfRequired(Buffer.from(req.params.clientstatebase64, 'base64'));
-        const config = this.getGoldenLayoutFromClientState(new ClientState(state));
-        const metadata = this.getMetaDataFromLink(req, null, config);
+    unstoredStateHandler(req: express.Request, res: express.Response, next: express.NextFunction) {
+        try {
+            const buffer = Buffer.from(req.params.clientstatebase64, 'base64');
+            const state = extractJsonFromBufferAndInflateIfRequired(buffer);
+            const config = this.getGoldenLayoutFromClientState(new ClientState(state));
+            const metadata = this.getMetaDataFromLink(req, null, config);
 
-        this.renderGoldenLayout(config, metadata, req, res);
+            this.renderGoldenLayout(config, metadata, req, res);
+        } catch (err) {
+            logger.debug('Failed to parse client state from URL', {
+                error: err instanceof Error ? err.message : String(err),
+                clientstatebase64: req.params.clientstatebase64?.substring(0, 100),
+            });
+            next({
+                statusCode: 400,
+                message: 'Invalid client state data in URL',
+            });
+        }
     }
 
     simpleLayoutHandler(req: express.Request, res: express.Response) {
@@ -268,7 +259,7 @@ export class RouteAPI {
             const sources = utils.glGetMainContents(config.content);
             if (sources.editors.length === 1) {
                 const editor = sources.editors[0];
-                lang = this.apiHandler.languages[editor.language];
+                lang = unwrap(this.apiHandler).languages[editor.language];
                 source = editor.source;
             } else {
                 const normalizer = new ClientStateNormalizer();
@@ -277,7 +268,7 @@ export class RouteAPI {
 
                 if (clientstate.trees && clientstate.trees.length === 1) {
                     const tree = clientstate.trees[0];
-                    lang = this.apiHandler.languages[tree.compilerLanguageId];
+                    lang = unwrap(this.apiHandler).languages[tree.compilerLanguageId];
 
                     if (tree.isCMakeProject) {
                         const firstSource = tree.files.find(file => {
@@ -304,7 +295,7 @@ export class RouteAPI {
                 metadata.ogTitle += ` - ${lang.name}`;
                 if (sources && sources.compilers.length === 1) {
                     const compilerId = sources.compilers[0].compiler;
-                    const compiler = this.apiHandler.compilers.find(c => c.id === compilerId);
+                    const compiler = unwrap(this.apiHandler).compilers.find(c => c.id === compilerId);
                     if (compiler) {
                         metadata.ogTitle += ` (${compiler.name})`;
                     }
@@ -323,13 +314,28 @@ export class RouteAPI {
 export function extractJsonFromBufferAndInflateIfRequired(buffer: Buffer): any {
     const firstByte = buffer.at(0); // for uncompressed data this is probably '{'
     const isGzipUsed = firstByte !== undefined && (firstByte & 0x0f) === 0x8; // https://datatracker.ietf.org/doc/html/rfc1950, https://datatracker.ietf.org/doc/html/rfc1950, for '{' this yields 11
+
+    let jsonString: string;
     if (isGzipUsed) {
         try {
-            return JSON.parse(zlib.inflateSync(buffer).toString());
-        } catch (_) {
-            return JSON.parse(buffer.toString());
+            jsonString = zlib.inflateSync(buffer).toString();
+        } catch (inflateError) {
+            logger.debug('Failed to inflate gzipped buffer, falling back to raw buffer', inflateError);
+            jsonString = buffer.toString();
         }
     } else {
-        return JSON.parse(buffer.toString());
+        jsonString = buffer.toString();
+    }
+
+    try {
+        return JSON.parse(jsonString);
+    } catch (parseError) {
+        logger.debug('Failed to parse JSON from client state', {
+            error: parseError,
+            jsonString: jsonString.substring(0, 100) + (jsonString.length > 100 ? '...' : ''),
+            bufferLength: buffer.length,
+        });
+        const errorMessage = parseError instanceof Error ? parseError.message : 'Unknown parsing error';
+        throw new Error(`Invalid JSON in client state: ${errorMessage}`);
     }
 }

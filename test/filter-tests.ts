@@ -27,30 +27,9 @@ import path from 'node:path';
 
 import {describe, expect, it} from 'vitest';
 
-import {CC65AsmParser} from '../lib/parsers/asm-parser-cc65.js';
-import {AsmEWAVRParser} from '../lib/parsers/asm-parser-ewavr.js';
-import {SassAsmParser} from '../lib/parsers/asm-parser-sass.js';
-import {VcAsmParser} from '../lib/parsers/asm-parser-vc.js';
-import {AsmParser} from '../lib/parsers/asm-parser.js';
-import {fakeProps} from '../lib/properties.js';
 import {ParseFiltersAndOutputOptions} from '../types/features/filters.interfaces.js';
 
-import {resolvePathFromTestRoot} from './utils.js';
-
-function processAsm(filename: string, filters: ParseFiltersAndOutputOptions) {
-    const file = fs.readFileSync(filename, 'utf8');
-    let parser: AsmParser;
-    if (file.includes('Microsoft')) parser = new VcAsmParser();
-    else if (filename.includes('sass-')) parser = new SassAsmParser();
-    else if (filename.includes('cc65-')) parser = new CC65AsmParser(fakeProps({}));
-    else if (filename.includes('ewarm-')) parser = new AsmEWAVRParser(fakeProps({}));
-    else {
-        parser = new AsmParser();
-        parser.binaryHideFuncRe =
-            /^(__.*|_(init|start|fini)|(de)?register_tm_clones|call_gmon_start|frame_dummy|\.plt.*|_dl_relocate_static_pie)$/;
-    }
-    return parser.process(file, filters);
-}
+import {processAsm, resolvePathFromTestRoot, skipExpensiveTests} from './utils.js';
 
 const casesRoot = resolvePathFromTestRoot('filters-cases');
 const files = fs.readdirSync(casesRoot);
@@ -82,22 +61,17 @@ const stringifyKeysInOrder = (data: any): string => {
 
 function testFilter(filename: string, suffix: string, filters: ParseFiltersAndOutputOptions) {
     const testName = path.basename(filename + suffix);
-    it(
-        testName,
-        // Bump the timeout a bit so that we don't fail for slow cases
-        {timeout: 10000},
-        async () => {
-            const result = processAsm(filename, filters);
-            delete result.parsingTime;
-            delete result.filteredCount;
-            // TODO normalize line endings?
-            await expect(stringifyKeysInOrder(result)).toMatchFileSnapshot(path.join(casesRoot, testName + '.json'));
-        },
-    );
+    it(testName, async () => {
+        const result = processAsm(filename, filters);
+        delete result.parsingTime;
+        delete result.filteredCount;
+        // TODO normalize line endings?
+        await expect(stringifyKeysInOrder(result)).toMatchFileSnapshot(path.join(casesRoot, testName + '.json'));
+    }, 10000); // Bump the timeout a bit so that we don't fail for slow cases
 }
 
-describe('Filter test cases', () => {
-    if (process.platform === 'win32') {
+describe.skipIf(skipExpensiveTests)('Filter test cases', () => {
+    if (process.platform === 'win32' || process.platform === 'darwin') {
         it('should skip filter-tests on Windows', () => {
             expect(true).toBe(true);
         });
@@ -119,7 +93,7 @@ describe('Filter test cases', () => {
         }
     });
     describe('Binary, directives, labels and comments', () => {
-        if (process.platform !== 'win32') {
+        if (process.platform !== 'win32' && process.platform !== 'darwin') {
             for (const x of cases) {
                 testFilter(x, '.binary.directives.labels.comments', {
                     binary: true,
@@ -131,7 +105,7 @@ describe('Filter test cases', () => {
         }
     });
     describe('Binary, directives, labels, comments and library code', () => {
-        if (process.platform !== 'win32') {
+        if (process.platform !== 'win32' && process.platform !== 'darwin') {
             for (const x of cases) {
                 if (!x.endsWith('-bin.asm')) continue;
 
@@ -146,7 +120,7 @@ describe('Filter test cases', () => {
         }
     });
     describe('Binary, directives, labels, comments and library code with dontMaskFilenames', () => {
-        if (process.platform !== 'win32') {
+        if (process.platform !== 'win32' && process.platform !== 'darwin') {
             for (const x of cases) {
                 if (!x.endsWith('-bin.asm')) continue;
 

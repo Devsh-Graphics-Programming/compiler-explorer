@@ -24,6 +24,7 @@
 
 import {WriteStream, createWriteStream} from 'node:fs';
 import {constants as fsConstants} from 'node:fs';
+import * as oldfs from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as net from 'node:net';
 import path from 'node:path';
@@ -42,7 +43,7 @@ import {PropertyGetter} from '../properties.interfaces.js';
 
 import {BaseRuntimeTool} from './base-runtime-tool.js';
 
-const O_NONBLOCK = 2048;
+const O_NONBLOCK = fsConstants.O_NONBLOCK;
 
 export class HeaptrackWrapper extends BaseRuntimeTool {
     private rawOutput: string;
@@ -111,7 +112,7 @@ export class HeaptrackWrapper extends BaseRuntimeTool {
         return this.execFunc(this.interpreter, [this.rawOutput], execOptions);
     }
 
-    private async finishPipesAndStreams(fd: fs.FileHandle, file: WriteStream, socket: net.Socket) {
+    private async finishPipesAndStreams(fd: number, file: WriteStream, socket: net.Socket): Promise<void> {
         socket.push(null);
         await new Promise(resolve => socket.end(() => resolve(true)));
 
@@ -119,6 +120,7 @@ export class HeaptrackWrapper extends BaseRuntimeTool {
 
         file.write(Buffer.from([0]));
 
+        // Don't manually close fd - the socket owns it and closes it during cleanup
         if (socket.resetAndDestroy) socket.resetAndDestroy();
         socket.unref();
 
@@ -128,8 +130,6 @@ export class HeaptrackWrapper extends BaseRuntimeTool {
                 resolve(true);
             });
         });
-
-        await fd.close();
     }
 
     private async interpretAndSave(execOptions: ExecutionOptions, result: UnprocessedExecResult) {
@@ -168,8 +168,8 @@ export class HeaptrackWrapper extends BaseRuntimeTool {
 
         await this.makePipe();
 
-        const fd = await fs.open(this.pipe, O_NONBLOCK | fsConstants.O_RDWR);
-        const socket = new net.Socket({fd: fd.fd, readable: true, writable: true});
+        const fd = oldfs.openSync(this.pipe, O_NONBLOCK | fsConstants.O_RDWR);
+        const socket = new net.Socket({fd: fd, readable: true, writable: true});
 
         const file = createWriteStream(this.rawOutput);
         pipeline(socket, file, err => {

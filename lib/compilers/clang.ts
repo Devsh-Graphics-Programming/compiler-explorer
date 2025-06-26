@@ -46,7 +46,7 @@ import {BaseCompiler} from '../base-compiler.js';
 import {CompilationEnvironment} from '../compilation-env.js';
 import {AmdgpuAsmParser} from '../parsers/asm-parser-amdgpu.js';
 import {HexagonAsmParser} from '../parsers/asm-parser-hexagon.js';
-import {SassAsmParser} from '../parsers/asm-parser-sass.js';
+import {PTXAsmParser} from '../parsers/asm-parser-ptx.js';
 import {StackUsageInfo} from '../stack-usage-transformer.js';
 import * as utils from '../utils.js';
 
@@ -321,7 +321,7 @@ export class ClangCudaCompiler extends ClangCompiler {
     constructor(info: PreliminaryCompilerInfo, env: CompilationEnvironment) {
         super(info, env);
 
-        this.asm = new SassAsmParser();
+        this.asm = new PTXAsmParser();
     }
 
     override getCompilerResultLanguageId(filters?: ParseFiltersAndOutputOptions): string | undefined {
@@ -438,5 +438,18 @@ export class ClangDxcCompiler extends ClangCompiler {
         userOptions?: string[],
     ): string[] {
         return ['--driver-mode=dxc', '-Zi', '-Qembed_debug', '-Fc', this.filename(outputFilename)];
+    }
+}
+
+export class Z80ClangCompiler extends ClangCompiler {
+    static override get key() {
+        return 'z80-clang';
+    }
+
+    constructor(info: PreliminaryCompilerInfo, env: CompilationEnvironment) {
+        super(info, env);
+
+        this.compiler.supportsIntel = false;
+        this.compiler.irArg = ['-Xclang', '-emit-llvm'];
     }
 }

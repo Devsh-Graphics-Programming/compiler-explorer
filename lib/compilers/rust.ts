@@ -22,8 +22,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+import {readdirSync} from 'node:fs';
 import path from 'node:path';
-
 import {SemVer} from 'semver';
 import _ from 'underscore';
 
@@ -39,7 +39,6 @@ import {BaseCompiler} from '../base-compiler.js';
 import type {BuildEnvDownloadInfo} from '../buildenvsetup/buildenv.interfaces.js';
 import {CompilationEnvironment} from '../compilation-env.js';
 import {changeExtension, parseRustOutput} from '../utils.js';
-
 import {RustParser} from './argument-parsers.js';
 
 export class RustCompiler extends BaseCompiler {
@@ -62,6 +61,10 @@ export class RustCompiler extends BaseCompiler {
         // are only available for Nightly
         this.compiler.supportsRustMacroExpView = isNightly;
         this.compiler.supportsRustHirView = isNightly;
+        if (this.compiler.name === 'rustc nightly') {
+            this.compiler.supportsOptOutput = true;
+            // not setting compiler.optArg, overriding prepareOptRemarksArgs instead (2 args needed)
+        }
 
         this.compiler.irArg = ['--emit', 'llvm-ir'];
         this.compiler.minIrArgs = ['--emit=llvm-ir'];
@@ -118,10 +121,12 @@ export class RustCompiler extends BaseCompiler {
         if (possibleEditions.length > 0) {
             let defaultEdition: undefined | string;
             if (!this.compiler.semver || this.isNightly()) {
-                defaultEdition = '2021';
+                defaultEdition = '2024';
             } else {
                 const compilerVersion = new SemVer(this.compiler.semver);
-                if (compilerVersion.compare('1.56.0') >= 0) {
+                if (compilerVersion.compare('1.85.0') >= 0) {
+                    defaultEdition = '2024';
+                } else if (compilerVersion.compare('1.56.0') >= 0) {
                     defaultEdition = '2021';
                 }
             }
@@ -243,6 +248,23 @@ export class RustCompiler extends BaseCompiler {
             opts.push('--emit', `mir=${of}`);
         }
         return opts;
+    }
+
+    override getOptFilePath(dirPath: string, outputFilebase: string): string {
+        // Find a file in dirPath that ends with codegen.opt.yaml, and return it
+        // A bit of a hack, but it works for now
+        const files = readdirSync(dirPath);
+        for (const file of files) {
+            if (file.endsWith('codegen.opt.yaml')) {
+                return path.join(dirPath, file);
+            }
+        }
+        return '';
+    }
+
+    override prepareOptRemarksArgs(options: string[], outputFilename: string): string[] {
+        const outputDir = path.dirname(outputFilename);
+        return options.concat(['-Cremark=all', `-Zremark-dir=${outputDir}`]);
     }
 
     override optionsForFilter(filters: ParseFiltersAndOutputOptions, outputFilename: string, userOptions?: string[]) {

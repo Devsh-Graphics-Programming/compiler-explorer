@@ -153,7 +153,9 @@ export class NSCSPIRVCompiler extends BaseCompiler {
             const ppFilename = path.join(sourceDir, this.outputFilebase + '.i');
             if (await utils.fileExists(ppFilename)) {
                 const ppText = await fs.readFile(ppFilename, 'utf8');
-                result.stdout = result.stdout.concat(utils.parseOutput(ppText));
+                result.asm = utils.parseOutput(ppText);
+            } else {
+                result.asm = utils.parseOutput('<No preprocessed output file>');
             }
             result.languageId = 'hlsl';
             return result;

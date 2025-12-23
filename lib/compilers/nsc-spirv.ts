@@ -25,12 +25,14 @@
 import path from 'path';
 import fs from 'fs/promises';
 
-import type {ExecutionOptions} from '../../types/compilation/compilation.interfaces.js';
+import type {CompilationResult, ExecutionOptions} from '../../types/compilation/compilation.interfaces.js';
 import type {PreliminaryCompilerInfo} from '../../types/compiler.interfaces.js';
 import type {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces.js';
 import {BaseCompiler} from '../base-compiler.js';
 import {logger} from '../logger.js';
 import {SPIRVAsmParser} from '../parsers/asm-parser-spirv.js';
+import type {OptRemark} from '../../static/panes/opt-view.interfaces.js';
+import type * as StackUsage from '../parsers/stackusage.js';
 import * as utils from '../utils.js';
 import {splitArguments} from '../../shared/common-utils.js';
 import {unwrap} from '../assert.js';
@@ -250,13 +252,13 @@ export class NSCSPIRVCompiler extends BaseCompiler {
     }
 
     override async postProcess(
-        result,
+        result: CompilationResult,
         outputFilename: string,
         filters: ParseFiltersAndOutputOptions,
         produceOptRemarks = false,
-    ) {
+    ): Promise<[CompilationResult, OptRemark[], StackUsage.StackUsageInfo[]]> {
         if ((result as any).preprocessOnly) {
-            return [result, [], []];
+            return [result, [] as OptRemark[], [] as StackUsage.StackUsageInfo[]];
         }
         return super.postProcess(result, outputFilename, filters, produceOptRemarks);
     }

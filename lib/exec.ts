@@ -22,22 +22,18 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import buffer from 'buffer';
 import child_process from 'node:child_process';
+import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import which from 'which';
-
 import {Stream} from 'node:stream';
-
-import fs from 'node:fs/promises';
+import buffer from 'buffer';
 import treeKill from 'tree-kill';
 import _ from 'underscore';
-
+import which from 'which';
+import {splitArguments} from '../shared/common-utils.js';
 import type {ExecutionOptions} from '../types/compilation/compilation.interfaces.js';
 import type {FilenameTransformFunc, UnprocessedExecResult} from '../types/execution/execution.interfaces.js';
-
-import {splitArguments} from '../shared/common-utils.js';
 import {assert, unwrap, unwrapString} from './assert.js';
 import {logger} from './logger.js';
 import {Graceful} from './node-graceful.js';
@@ -51,6 +47,7 @@ type NsJailOptions = {
 };
 
 const execProps = propsFor('execution');
+const c_nsjail_permissions_error = 'runChild():486 Launching child process failed';
 
 let stdbufPath: null | string = null;
 
@@ -139,8 +136,8 @@ export async function executeDirect(
         });
 
     const streams = {
-        stderr: '',
-        stdout: '',
+        stderr: [] as Buffer[],
+        stdout: [] as Buffer[],
         truncated: false,
     };
     let timeout: NodeJS.Timeout | undefined;
@@ -150,24 +147,26 @@ export async function executeDirect(
             okToCache = false;
             timedOut = true;
             kill();
-            streams.stderr += '\nKilled - processing time exceeded\n';
+            streams.stderr.push(Buffer.from('\nKilled - processing time exceeded\n', 'utf8'));
         }, timeoutMs);
 
     function setupStream(stream: Stream, name: 'stdout' | 'stderr') {
         if (stream === undefined) return;
-        stream.on('data', data => {
+        let currentLength = 0;
+        stream.on('data', (data: Buffer) => {
             if (streams.truncated) return;
-            const newLength = streams[name].length + data.length;
+            const newLength = currentLength + data.length;
             if (maxOutput > 0 && newLength > maxOutput) {
                 const truncatedMsg = '\n[Truncated]';
-                const spaceLeft = Math.max(maxOutput - streams[name].length - truncatedMsg.length, 0);
-                streams[name] = streams[name] + data.slice(0, spaceLeft);
-                streams[name] += truncatedMsg.slice(0, maxOutput - streams[name].length);
+                const spaceLeft = Math.max(maxOutput - currentLength - truncatedMsg.length, 0);
+                streams[name].push(Buffer.from(data).subarray(0, spaceLeft));
+                streams[name].push(Buffer.from(truncatedMsg));
                 streams.truncated = true;
                 kill();
                 return;
             }
-            streams[name] += data;
+            streams[name].push(Buffer.from(data));
+            currentLength = newLength;
         });
         setupOnError(stream, name);
     }
@@ -195,8 +194,8 @@ export async function executeDirect(
                 okToCache,
                 timedOut,
                 filenameTransform: filenameTransform || (x => x),
-                stdout: streams.stdout,
-                stderr: streams.stderr,
+                stdout: Buffer.concat(streams.stdout).toString('utf8'),
+                stderr: Buffer.concat(streams.stderr).toString('utf8'),
                 truncated: streams.truncated,
                 execTime: utils.deltaTimeNanoToMili(startTime, endTime),
             };
@@ -244,6 +243,8 @@ export function getFirejailProfileFilePath(profileName: string): string {
     return profilePath;
 }
 
+const jailedHomeDir = '/app';
+
 export function getNsJailOptions(
     configName: string,
     command: string,
@@ -258,26 +259,25 @@ export function getNsJailOptions(
         jailingOptions.push(`--time_limit=${Math.round((options.timeoutMs + ExtraWallClockLeewayMs) / 1000)}`);
     }
 
-    const homeDir = '/app';
     let filenameTransform: FilenameTransformFunc | undefined;
     if (options.customCwd) {
         let replacement = options.customCwd;
         if (options.appHome) {
             replacement = options.appHome;
-            const relativeCwd = path.join(homeDir, path.relative(options.appHome, options.customCwd));
-            jailingOptions.push('--cwd', relativeCwd, '--bindmount', `${options.appHome}:${homeDir}`);
+            const relativeCwd = path.join(jailedHomeDir, path.relative(options.appHome, options.customCwd));
+            jailingOptions.push('--cwd', relativeCwd, '--bindmount', `${options.appHome}:${jailedHomeDir}`);
         } else {
-            jailingOptions.push('--cwd', homeDir, '--bindmount', `${options.customCwd}:${homeDir}`);
+            jailingOptions.push('--cwd', jailedHomeDir, '--bindmount', `${options.customCwd}:${jailedHomeDir}`);
         }
 
-        filenameTransform = opt => opt.replaceAll(replacement, '/app');
+        filenameTransform = opt => opt.replaceAll(replacement, jailedHomeDir);
         args = args.map(filenameTransform);
         delete options.customCwd;
     }
 
     const transform = filenameTransform || (x => x);
 
-    const env: Record<string, string> = {...options.env, HOME: homeDir};
+    const env: Record<string, string> = {...options.env, HOME: jailedHomeDir};
     if (options.ldPath) {
         const ldPaths = options.ldPath.filter(Boolean).map(path => transform(path));
         jailingOptions.push(`--env=LD_LIBRARY_PATH=${ldPaths.join(path.delimiter)}`);
@@ -354,15 +354,41 @@ export function getExecuteCEWrapperOptions(command: string, args: string[], opti
     return getCeWrapperOptions('execute', command, args, options);
 }
 
-function sandboxNsjail(command: string, args: string[], options: ExecutionOptions) {
-    logger.info('Sandbox execution via nsjail', {command, args});
-    const nsOpts = getSandboxNsjailOptions(command, args, options);
-    return executeDirect(execProps<string>('nsjail'), nsOpts.args, nsOpts.options, nsOpts.filenameTransform);
+export function hasNsjailPermissionsIssue(result: UnprocessedExecResult): boolean {
+    return result.stderr.includes(c_nsjail_permissions_error) || (result.stderr === '' && result.code === 255);
 }
 
-function executeNsjail(command: string, args: string[], options: ExecutionOptions) {
+async function sandboxNsjail(
+    command: string,
+    args: string[],
+    options: ExecutionOptions,
+): Promise<UnprocessedExecResult> {
+    logger.info('Sandbox execution via nsjail', {command, args});
+    const nsOpts = getSandboxNsjailOptions(command, args, options);
+    const result = await executeDirect(
+        execProps<string>('nsjail'),
+        nsOpts.args,
+        nsOpts.options,
+        nsOpts.filenameTransform,
+    );
+    if (hasNsjailPermissionsIssue(result)) result.okToCache = false;
+    return result;
+}
+
+async function executeNsjail(
+    command: string,
+    args: string[],
+    options: ExecutionOptions,
+): Promise<UnprocessedExecResult> {
     const nsOpts = getNsJailOptions('execute', command, args, options);
-    return executeDirect(execProps<string>('nsjail'), nsOpts.args, nsOpts.options, nsOpts.filenameTransform);
+    const result = await executeDirect(
+        execProps<string>('nsjail'),
+        nsOpts.args,
+        nsOpts.options,
+        nsOpts.filenameTransform,
+    );
+    if (hasNsjailPermissionsIssue(result)) result.okToCache = false;
+    return result;
 }
 
 function sandboxCEWrapper(command: string, args: string[], options: ExecutionOptions) {
@@ -533,7 +559,7 @@ export function startWineInit() {
             setupOnError(stdout, 'stdout');
             setupOnError(stderr, 'stderr');
             const magicString = '!!EVERYTHING IS WORKING!!';
-            stdin.write(`echo ${magicString}`);
+            stdin.write(`echo ${magicString}\n`);
 
             let output = '';
             stdout.on('data', data => {
@@ -652,4 +678,8 @@ export async function execute(
     if (!command) throw new Error('No executable provided');
     const unbuffered = await maybeUnbuffer(command, args);
     return await dispatchEntry(unbuffered.command, unbuffered.args, options);
+}
+
+export function maybeRemapJailedDir(customCwd: string): string {
+    return execProps('executionType', 'none') == 'nsjail' ? jailedHomeDir : customCwd;
 }

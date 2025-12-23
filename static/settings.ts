@@ -23,17 +23,16 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 import $ from 'jquery';
+import {assert, unwrapString} from '../shared/assert.js';
 import {isString, keys} from '../shared/common-utils.js';
-import {assert, unwrapString} from './assert.js';
+import {LanguageKey} from '../types/languages.interfaces.js';
 import * as colour from './colour.js';
 import {AppTheme, ColourScheme, ColourSchemeInfo} from './colour.js';
 import {EventHub} from './event-hub.js';
 import {Hub} from './hub.js';
+import {localStorage} from './local.js';
 import {options} from './options.js';
 import {Themes, themes} from './themes.js';
-
-import {LanguageKey} from '../types/languages.interfaces.js';
-import {localStorage} from './local.js';
 
 export type FormatBase = 'Google' | 'LLVM' | 'Mozilla' | 'Chromium' | 'WebKit' | 'Microsoft' | 'GNU';
 
@@ -166,7 +165,7 @@ class Slider extends BaseSetting {
     }
 
     override getUi(): number {
-        return Number.parseInt(this.val()?.toString() ?? '0');
+        return Number.parseInt(this.val()?.toString() ?? '0', 10);
     }
 
     private updateDisplay() {
@@ -190,7 +189,7 @@ class Numeric extends BaseSetting {
     }
 
     override getUi(): number {
-        return this.clampValue(Number.parseInt(this.val()?.toString() ?? '0'));
+        return this.clampValue(Number.parseInt(this.val()?.toString() ?? '0', 10));
     }
 
     override putUi(value: number) {
@@ -378,7 +377,7 @@ export class Settings {
         ).elem;
         defaultFontScaleSelector.on('change', e => {
             assert(e.target instanceof HTMLSelectElement);
-            this.eventHub.emit('broadcastFontScale', Number.parseInt(e.target.value));
+            this.eventHub.emit('broadcastFontScale', Number.parseInt(e.target.value, 10));
         });
 
         const formats: FormatBase[] = ['Google', 'LLVM', 'Mozilla', 'Chromium', 'WebKit', 'Microsoft', 'GNU'];
@@ -449,7 +448,7 @@ export class Settings {
         });
 
         const colourSchemeSelect = this.root.find('.colourScheme');
-        colourSchemeSelect.on('change', e => {
+        colourSchemeSelect.on('change', _e => {
             const currentTheme = this.settings.theme;
             $.data(themeSelect, 'theme-' + currentTheme, unwrapString<ColourScheme>(colourSchemeSelect.val()));
         });

@@ -25,9 +25,10 @@
 import $ from 'jquery';
 import {editor} from 'monaco-editor';
 import {pluck} from 'underscore';
-import {unwrap} from '../assert.js';
+import {unwrap} from '../../shared/assert.js';
 import * as BootstrapUtils from '../bootstrap-utils.js';
 import {EditorSource, HistoryEntry, sortedList} from '../history.js';
+
 import ITextModel = editor.ITextModel;
 
 type Entry = {dt: number; name: string; load: () => void};

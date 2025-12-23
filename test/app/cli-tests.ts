@@ -26,7 +26,7 @@ import child_process from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {MockInstance, afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, describe, expect, it, MockInstance, vi} from 'vitest';
 import {
     CompilerExplorerOptions,
     convertOptionsToAppArguments,
@@ -46,12 +46,19 @@ describe('CLI Module', () => {
             expect(parsePortNumberForOptions('65535')).toEqual(65535);
         });
 
-        it.each(['-1', '65536', 'abc', '123abc', '', '123.45', '12.34.56', '12-34-56', '12,34,56'])(
-            'should throw on bad numbers: "%s"',
-            notNumber => {
-                expect(() => parsePortNumberForOptions(notNumber)).toThrow();
-            },
-        );
+        it.each([
+            '-1',
+            '65536',
+            'abc',
+            '123abc',
+            '',
+            '123.45',
+            '12.34.56',
+            '12-34-56',
+            '12,34,56',
+        ])('should throw on bad numbers: "%s"', notNumber => {
+            expect(() => parsePortNumberForOptions(notNumber)).toThrow();
+        });
     });
 
     describe('getGitReleaseName', () => {

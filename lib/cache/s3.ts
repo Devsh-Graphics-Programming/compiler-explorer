@@ -22,9 +22,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import {Buffer} from 'buffer';
-
 import {StorageClass} from '@aws-sdk/client-s3';
+import {Buffer} from 'buffer';
 
 import type {GetResult} from '../../types/cache.interfaces.js';
 import {logger} from '../logger.js';
@@ -79,6 +78,41 @@ export class S3Cache extends BaseCache {
         };
         try {
             await this.s3.put(key, value, this.path, options);
+        } catch (e) {
+            this.onError(e, 'write');
+        }
+    }
+
+    async putWithTTL(key: string, value: Buffer, ttlDays: number, creator?: string): Promise<void> {
+        const expiresDate = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+        const options: S3HandlerOptions = {
+            metadata: creator ? {CreatedBy: creator} : {},
+            redundancy: StorageClass.REDUCED_REDUNDANCY,
+            expires: expiresDate,
+        };
+        try {
+            await this.s3.put(key, value, this.path, options);
+        } catch (e) {
+            this.onError(e, 'write');
+        }
+    }
+
+    async putWithTTLAndPath(
+        key: string,
+        value: Buffer,
+        ttlDays: number,
+        pathPrefix: string,
+        creator?: string,
+    ): Promise<void> {
+        const expiresDate = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000);
+        const options: S3HandlerOptions = {
+            metadata: creator ? {CreatedBy: creator} : {},
+            redundancy: StorageClass.REDUCED_REDUNDANCY,
+            expires: expiresDate,
+        };
+        try {
+            const customPath = `${this.path}/${pathPrefix}`;
+            await this.s3.put(key, value, customPath, options);
         } catch (e) {
             this.onError(e, 'write');
         }

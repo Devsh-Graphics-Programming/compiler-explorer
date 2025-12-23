@@ -1,7 +1,7 @@
 [![Build Status](https://github.com/compiler-explorer/compiler-explorer/workflows/Compiler%20Explorer/badge.svg)](https://github.com/compiler-explorer/compiler-explorer/actions?query=workflow%3A%22Compiler+Explorer%22)
 [![codecov](https://codecov.io/gh/compiler-explorer/compiler-explorer/branch/main/graph/badge.svg)](https://codecov.io/gh/compiler-explorer/compiler-explorer)
 
-[![logo](views/resources/logos/assembly.png)](https://godbolt.org/)
+[![logo](public/logos/assembly.png)](https://godbolt.org/)
 
 # Compiler Explorer
 
@@ -28,7 +28,7 @@ layout is configurable (thanks to [GoldenLayout](https://www.golden-layout.com/)
 
 Try out at [godbolt.org](https://godbolt.org), or [run your own local instance](#running-a-local-instance). An overview
 of what the site lets you achieve, why it's useful, and how to use it is
-[available here](docs/WhatIsCompilerExplorer.md).
+[available here](docs/WhatIsCompilerExplorer.md), or in [this talk](https://www.youtube.com/watch?v=_9sGKcvT-TA).
 
 **Compiler Explorer** follows a [Code of Conduct](CODE_OF_CONDUCT.md) which aims to foster an open and welcoming
 environment.
@@ -42,7 +42,7 @@ Since then, it has become a public website serving over
 You can financially support [this project on Patreon](https://patreon.com/mattgodbolt),
 [GitHub](https://github.com/sponsors/mattgodbolt/),
 [Paypal](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=KQWQZ7GPY2GZ6&item_name=Compiler+Explorer+development&currency_code=USD&source=url),
-or by buying cool gear on the [Compiler Explorer store](https://shop.spreadshirt.com/compiler-explorer/).
+or by buying cool gear on the [Compiler Explorer store](https://shop.compiler-explorer.com).
 
 ## Using Compiler Explorer
 
@@ -109,6 +109,11 @@ how to add new compilers or languages to the site.
 If you want to point it at your own GCC or similar binaries, either edit the `etc/config/LANG.defaults.properties` or
 else make a new one with the name `LANG.local.properties`, substituting `LANG` as needed. `*.local.properties` files
 have the highest priority when loading properties.
+
+For a quick and easy way to add local compilers, use the 
+[CE Properties Wizard](etc/scripts/ce-properties-wizard/) which automatically detects and configures compilers 
+for [30+ languages](etc/scripts/ce-properties-wizard/README.md#supported-languages). 
+See [Adding a Compiler](docs/AddingACompiler.md) for more details.
 
 If you want to support multiple compilers and languages like [godbolt.org](https://godbolt.org), you can use the
 `bin/ce_install install compilers` command in the [infra](https://github.com/compiler-explorer/infra) project to install

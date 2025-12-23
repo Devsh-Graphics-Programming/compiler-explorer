@@ -25,6 +25,17 @@
 import bigInt from 'big-integer';
 import {addDigitSeparator} from '../shared/common-utils.js';
 
+/**
+ * Get an image relative to `/public` in the source root.
+ */
+export function getStaticImage(filename: string, parent?: string) {
+    const root = window.staticRoot;
+    if (parent) {
+        return `${root}${parent}/${filename}`;
+    }
+    return `${root}${filename}`;
+}
+
 export function updateAndCalcTopBarHeight(domRoot: JQuery, topBar: JQuery, hideable: JQuery): number {
     let topBarHeight = 0;
     if (!topBar.hasClass('d-none')) {
@@ -137,9 +148,16 @@ export function getNumericToolTip(value: string, digitSeparator?: string): strin
     const decoder = new TextDecoder('utf-8', {fatal: true});
     try {
         result += ' = ' + JSON.stringify(decoder.decode(Uint8Array.from(bytes)));
-    } catch (e) {
+    } catch {
         // ignore `TypeError` when the number is not valid UTF-8
     }
 
     return result;
+}
+
+// zip two arrays up until min(a.length, b.length)
+export function* zip<T>(a: T[], b: T[]) {
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+        yield [a[i], b[i]] as [T, T];
+    }
 }

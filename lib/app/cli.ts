@@ -64,6 +64,7 @@ export interface CompilerExplorerOptions {
     language?: string[];
     cache: boolean;
     ensureNoIdClash?: boolean;
+    exitOnCompilerFailure?: boolean;
     logHost?: string;
     logPort?: number;
     hostnameForLogging?: string;
@@ -76,6 +77,7 @@ export interface CompilerExplorerOptions {
     local: boolean;
     version: boolean;
     devMode: boolean;
+    instanceColor?: string;
 }
 
 /**
@@ -100,6 +102,7 @@ export function parseCommandLine(argv: string[]): CompilerExplorerOptions {
         .option('--language <languages...>', 'Only load specified languages for faster startup')
         .option('--no-cache', 'Do not use caching for compilation results')
         .option('--ensure-no-id-clash', "Don't run if compilers have clashing ids")
+        .option('--exit-on-compiler-failure', 'Exit with error code if any compilers fail to initialize')
         .option('--logHost, --log-host <hostname>', 'Hostname for remote logging')
         .option('--logPort, --log-port <port>', 'Port for remote logging', parsePortNumberForOptions)
         .option('--hostnameForLogging, --hostname-for-logging <hostname>', 'Hostname to use in logs')
@@ -115,7 +118,8 @@ export function parseCommandLine(argv: string[]): CompilerExplorerOptions {
             '--dev-mode',
             'Run in dev mode (default if NODE_ENV is not production)',
             process.env.NODE_ENV !== 'production',
-        );
+        )
+        .option('--instance-color <color>', 'Instance color (blue or green) for deployment differentiation');
 
     program.parse(argv);
     return program.opts() as CompilerExplorerOptions;
@@ -186,6 +190,7 @@ export function convertOptionsToAppArguments(
         doCache: options.cache,
         fetchCompilersFromRemote: options.remoteFetch,
         ensureNoCompilerClash: options.ensureNoIdClash,
+        exitOnCompilerFailure: options.exitOnCompilerFailure,
         prediscovered: options.prediscovered,
         discoveryOnly: options.discoveryOnly,
         staticPath: options.static,
@@ -195,6 +200,7 @@ export function convertOptionsToAppArguments(
         tmpDir: options.tmpDir,
         isWsl: isWsl,
         devMode: options.devMode,
+        instanceColor: options.instanceColor,
         loggingOptions: {
             debug: options.debug || false,
             logHost: options.logHost,

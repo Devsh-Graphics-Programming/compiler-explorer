@@ -22,11 +22,10 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+import {Container} from 'golden-layout';
 import $ from 'jquery';
 import * as monaco from 'monaco-editor';
 import TomSelect from 'tom-select';
-
-import {Container} from 'golden-layout';
 import {CompilationResult} from '../../types/compilation/compilation.interfaces.js';
 import {CompilerInfo} from '../../types/compiler.interfaces.js';
 import {ResultLine} from '../../types/resultline/resultline.interfaces.js';
@@ -51,12 +50,12 @@ function decodeSelectizeValue(value: string): DiffTypeAndExtra {
     const opts = value.split(':');
     if (opts.length > 1) {
         return {
-            difftype: Number.parseInt(opts[0]),
+            difftype: Number.parseInt(opts[0], 10),
             extraoption: opts[1],
         };
     }
     return {
-        difftype: Number.parseInt(value),
+        difftype: Number.parseInt(value, 10),
         extraoption: '',
     };
 }
@@ -111,7 +110,11 @@ class DiffStateObject {
         if (this.result) {
             switch (this.difftype) {
                 case DiffType.ASM:
-                    output = this.result.asm ? (this.result.asm as ResultLine[]) : [];
+                    output = this.result.asm
+                        ? (this.result.asm as ResultLine[])
+                        : this.result.result?.asm
+                          ? (this.result.result?.asm as ResultLine[])
+                          : [];
                     break;
                 case DiffType.CompilerStdOut:
                     output = this.result.stdout;
@@ -165,6 +168,16 @@ class DiffStateObject {
                 case DiffType.RustHirOutput:
                     output = this.result.rustHirOutput || [
                         {text: "<select 'Add new...' → 'Rust HIR' in this compiler's pane>"},
+                    ];
+                    break;
+                case DiffType.ClojureMacroExpOutput:
+                    output = this.result.clojureMacroExpOutput || [
+                        {text: "<select 'Add new...' → 'Clojure Macro Expansion' in this compiler's pane>"},
+                    ];
+                    break;
+                case DiffType.YulOutput:
+                    output = this.result.yulOutput || [
+                        {text: "<select 'Add new...' → 'Yul (Solidity IR)' in this compiler's pane>"},
                     ];
                     break;
             }
@@ -429,7 +442,7 @@ export class Diff extends MonacoPane<monaco.editor.IStandaloneDiffEditor, DiffSt
         if (typeof id === 'string') {
             const p = id.indexOf('_exec');
             if (p !== -1) {
-                const execId = Number.parseInt(id.substr(0, p));
+                const execId = Number.parseInt(id.substr(0, p), 10);
                 this.eventHub.emit('resendExecution', execId);
             }
         } else {
@@ -469,6 +482,12 @@ export class Diff extends MonacoPane<monaco.editor.IStandaloneDiffEditor, DiffSt
             }
             if (compiler.supportsRustHirView) {
                 options.push({id: DiffType.RustHirOutput.toString(), name: 'Rust HIR'});
+            }
+            if (compiler.supportsClojureMacroExpView) {
+                options.push({id: DiffType.ClojureMacroExpOutput.toString(), name: 'Clojure Macro Expansion'});
+            }
+            if (compiler.supportsYulView) {
+                options.push({id: DiffType.YulOutput.toString(), name: 'Yul (Solidity IR)'});
             }
         }
 

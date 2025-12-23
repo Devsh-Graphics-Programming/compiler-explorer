@@ -36,6 +36,7 @@ export type LanguageKey =
     | 'circle'
     | 'circt'
     | 'clean'
+    | 'clojure'
     | 'cmake'
     | 'cmakescript'
     | 'cobol'
@@ -61,6 +62,7 @@ export type LanguageKey =
     | 'go'
     | 'haskell'
     | 'hlsl'
+    | 'helion'
     | 'hook'
     | 'hylo'
     | 'ispc'
@@ -101,14 +103,16 @@ export type LanguageKey =
     | 'swift'
     | 'tablegen'
     | 'toit'
+    | 'triton'
     | 'typescript'
     | 'v'
     | 'vala'
     | 'vb'
     | 'vyper'
     | 'wasm'
-    | 'zig'
-    | 'ylc';
+    | 'ylc'
+    | 'yul'
+    | 'zig';
 
 export interface Language {
     /** Id of language. Added programmatically based on CELanguages key */
@@ -125,14 +129,10 @@ export interface Language {
     formatter: string | null;
     /** Whether there's at least 1 compiler in this language that supportsExecute */
     supportsExecute: boolean | null;
-    /** Path in /views/resources/logos to the logo of the language */
-    logoUrl: string | null;
-    /** Path in /views/resources/logos to the logo of the language for dark mode use */
-    logoUrlDark: string | null;
-    /** Data from webpack */
-    logoData?: any;
-    /** Data from webpack */
-    logoDataDark?: any;
+    /** Path in /public/logos to the logo of the language */
+    logoFilename: string | null;
+    /** Path in /public/logos to the logo of the language for dark mode use */
+    logoFilenameDark: string | null;
     /** Example code to show in the language's editor */
     example: string;
     previewFilter: RegExp | null;

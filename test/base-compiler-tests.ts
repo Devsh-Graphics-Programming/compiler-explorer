@@ -36,7 +36,7 @@ import * as props from '../lib/properties.js';
 import {splitArguments} from '../shared/common-utils.js';
 import {CompilerOverrideType, ConfiguredOverrides} from '../types/compilation/compiler-overrides.interfaces.js';
 import {CompilerInfo} from '../types/compiler.interfaces.js';
-
+import {SelectedLibraryVersion} from '../types/libraries/libraries.interfaces.js';
 import {
     makeCompilationEnvironment,
     makeFakeCompilerInfo,
@@ -129,6 +129,7 @@ describe('Compiler execution', () => {
         supportsExecute: true,
         supportsBinary: true,
         options: '--hello-abc -I"/opt/some thing 1.0/include" -march="magic 8bit"',
+        exe: 'compiler-exe',
     });
     const win32CompilerInfo = makeFakeCompilerInfo({
         remote: {
@@ -142,6 +143,7 @@ describe('Compiler execution', () => {
         supportsExecute: true,
         supportsBinary: true,
         options: '/std=c++17 /I"C:/program files (x86)/Company name/Compiler 1.2.3/include" /D "MAGIC=magic 8bit"',
+        exe: 'compiler.exe',
     });
     const noExecuteSupportCompilerInfo = makeFakeCompilerInfo({
         remote: {
@@ -153,6 +155,7 @@ describe('Compiler execution', () => {
         lang: 'c++',
         ldPath: [],
         libPath: [],
+        exe: 'g++',
     });
     const someOptionsCompilerInfo = makeFakeCompilerInfo({
         remote: {
@@ -167,6 +170,7 @@ describe('Compiler execution', () => {
         supportsExecute: true,
         supportsBinary: true,
         options: '--hello-abc -I"/opt/some thing 1.0/include"',
+        exe: 'clang++',
     });
 
     beforeAll(() => {
@@ -191,12 +195,12 @@ describe('Compiler execution', () => {
     // }
 
     it('basecompiler should handle spaces in options correctly', () => {
-        const userOptions = [];
+        const userOptions: string[] = [];
         const filters = makeFakeParseFiltersAndOutputOptions({});
         const backendOptions = {};
         const inputFilename = 'example.cpp';
         const outputFilename = 'example.s';
-        const libraries = [];
+        const libraries: SelectedLibraryVersion[] = [];
 
         const args = compiler.prepareArguments(
             userOptions,
@@ -220,12 +224,12 @@ describe('Compiler execution', () => {
     });
 
     it('win32 compiler should handle spaces in options correctly', () => {
-        const userOptions = [];
+        const userOptions: string[] = [];
         const filters = makeFakeParseFiltersAndOutputOptions({});
         const backendOptions = {};
         const inputFilename = 'example.cpp';
         const outputFilename = 'example.s';
-        const libraries = [];
+        const libraries: SelectedLibraryVersion[] = [];
 
         const win32args = win32compiler.prepareArguments(
             userOptions,
@@ -242,6 +246,8 @@ describe('Compiler execution', () => {
             '/c',
             '/Faexample.s',
             '/Foexample.s.obj',
+            '/Zi',
+            '/Fdexample.s.pdb',
             '/std=c++17',
             '/IC:/program files (x86)/Company name/Compiler 1.2.3/include',
             '/D',
@@ -681,6 +687,7 @@ describe('getDefaultExecOptions', () => {
         ldPath: [],
         libPath: [],
         extraPath: ['/tmp/p1', '/tmp/p2'],
+        exe: 'g++',
     });
 
     beforeAll(() => {
@@ -730,12 +737,50 @@ describe('Target hints', () => {
         const compiler = new ClangCompiler(noExecuteSupportCompilerInfo, ce);
 
         const args =
-            '-gdwarf-4 -g -o output.s -mllvm --x86-asm-syntax=intel -S --gcc-toolchain=/opt/compiler-explorer/gcc-13.2.0 -fcolor-diagnostics -fno-crash-diagnostics --target=riscv64 example.cpp -isystem/opt/compiler-explorer/libs/abseil';
+            '-g -o output.s -mllvm --x86-asm-syntax=intel -S --gcc-toolchain=/opt/compiler-explorer/gcc-13.2.0 -fcolor-diagnostics -fno-crash-diagnostics --target=riscv64 example.cpp -isystem/opt/compiler-explorer/libs/abseil';
         const argArray = splitArguments(args);
         const hint = compiler.getTargetHintFromCompilerArgs(argArray);
         expect(hint).toBe('riscv64');
         const iset = await compiler.getInstructionSetFromCompilerArgs(argArray);
         expect(iset).toBe('riscv64');
+    });
+});
+
+describe('Rust options', () => {
+    let ce: CompilationEnvironment;
+    const executingCompilerInfo = makeFakeCompilerInfo({
+        remote: {
+            target: '',
+            path: '',
+            cmakePath: '',
+            basePath: '/',
+        },
+        semver: 'nightly',
+        lang: 'rust',
+        ldPath: [],
+        libPath: [],
+        supportsExecute: true,
+        supportsBinary: true,
+        options: '',
+    });
+
+    beforeAll(() => {
+        ce = makeCompilationEnvironment({
+            languages,
+        });
+        props.initialize(path.resolve('./test/test-properties/rust'), ['local']);
+    });
+
+    afterAll(() => {
+        props.reset();
+    });
+
+    it('does not pass `--crate-type` when specified by user', () => {
+        const compiler = new RustCompiler(executingCompilerInfo, ce);
+        const options = compiler.optionsForFilter({}, 'output.o', ['--crate-type=bin']);
+        expect(options).not.toContain('--crate-type');
+        const optionsTwoArgs = compiler.optionsForFilter({}, 'output.o', ['--crate-type', 'bin']);
+        expect(optionsTwoArgs).not.toContain('--crate-type');
     });
 });
 

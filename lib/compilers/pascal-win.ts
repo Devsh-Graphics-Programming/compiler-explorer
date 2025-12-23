@@ -22,11 +22,14 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+import fs from 'node:fs/promises';
 import path from 'node:path';
 
-import fs from 'node:fs/promises';
-
-import type {ExecutionOptions, ExecutionOptionsWithEnv} from '../../types/compilation/compilation.interfaces.js';
+import type {
+    ExecutionOptions,
+    ExecutionOptionsWithEnv,
+    FiledataPair,
+} from '../../types/compilation/compilation.interfaces.js';
 import type {PreliminaryCompilerInfo} from '../../types/compiler.interfaces.js';
 import type {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces.js';
 import {unwrap} from '../assert.js';
@@ -121,7 +124,7 @@ export class PascalWinCompiler extends BaseCompiler {
         );
     }
 
-    override async writeAllFiles(dirPath: string, source: string, files: any[], filters: ParseFiltersAndOutputOptions) {
+    override async writeAllFiles(dirPath: string, source: string, files: FiledataPair[]) {
         let inputFilename: string;
         if (pascalUtils.isProgram(source)) {
             inputFilename = path.join(dirPath, this.dprFilename);

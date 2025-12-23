@@ -22,9 +22,9 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'node:path';
-
 import fs from 'node:fs/promises';
+import path from 'node:path';
+import process from 'node:process';
 import * as Sentry from '@sentry/node';
 import express from 'express';
 import Server from 'http-proxy';
@@ -47,7 +47,9 @@ import {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfa
 import {LanguageKey} from '../../types/languages.interfaces.js';
 import {SelectedLibraryVersion} from '../../types/libraries/libraries.interfaces.js';
 import {ResultLine} from '../../types/resultline/resultline.interfaces.js';
+import {AppArguments} from '../app.interfaces.js';
 import {BaseCompiler} from '../base-compiler.js';
+import {parseExecutionParameters, parseTools, parseUserArguments} from '../compilation/compilation-request-parser.js';
 import {CompilationEnvironment} from '../compilation-env.js';
 import {getCompilerTypeByKey} from '../compilers/index.js';
 import {logger} from '../logger.js';
@@ -129,6 +131,7 @@ export class CompileHandler implements ICompileHandler {
     private readonly textBanner: string;
     private readonly proxy: Server;
     private readonly awsProps: PropertyGetter;
+    private readonly appArgs: AppArguments | undefined;
     private clientOptions: ClientOptionsType | null = null;
     private readonly compileCounter = new Counter({
         name: 'ce_compilations_total',
@@ -151,11 +154,12 @@ export class CompileHandler implements ICompileHandler {
         labelNames: ['language'],
     });
 
-    constructor(compilationEnvironment: CompilationEnvironment, awsProps: PropertyGetter) {
+    constructor(compilationEnvironment: CompilationEnvironment, awsProps: PropertyGetter, appArgs?: AppArguments) {
         this.compilerEnv = compilationEnvironment;
         this.textBanner = this.compilerEnv.ceProps<string>('textBanner');
         this.proxy = Server.createProxyServer({});
         this.awsProps = awsProps;
+        this.appArgs = appArgs;
         initialise(this.compilerEnv);
 
         // Mostly cribbed from
@@ -219,7 +223,7 @@ export class CompileHandler implements ICompileHandler {
                 let json = '<json stringify error>';
                 try {
                     json = JSON.stringify(bodyData);
-                } catch (e) {}
+                } catch {}
                 Sentry.captureMessage(`Unknown proxy bodyData: ${typeof bodyData} ${json}`);
                 proxyReq.write('Proxy error');
             }
@@ -295,7 +299,8 @@ export class CompileHandler implements ICompileHandler {
         const compilersById: Partial<Record<LanguageKey, Record<string, BaseCompiler>>> = {};
         try {
             this.clientOptions = clientOptions;
-            logger.info('Creating compilers: ' + compilers.length);
+            const totalCompilers = compilers.length;
+            logger.info('Creating compilers: ' + totalCompilers);
             let compilersCreated = 0;
             const createdCompilers = remove(await Promise.all(compilers.map(c => this.create(c))), null);
             for (const compiler of createdCompilers) {
@@ -304,6 +309,17 @@ export class CompileHandler implements ICompileHandler {
                 compilersById[langId][compiler.getInfo().id] = compiler;
                 compilersCreated++;
             }
+
+            const failedCount = totalCompilers - compilersCreated;
+            if (failedCount > 0) {
+                logger.error(`Failed to create ${failedCount} out of ${totalCompilers} compilers`);
+
+                if (this.appArgs?.exitOnCompilerFailure) {
+                    logger.error('Exiting due to compiler creation failures (exitOnCompilerFailure=true)');
+                    process.exit(1);
+                }
+            }
+
             logger.info('Compilers created: ' + compilersCreated);
             if (this.awsProps) {
                 logger.info('Fetching possible arguments from storage');
@@ -384,13 +400,13 @@ export class CompileHandler implements ICompileHandler {
         return compiler;
     }
 
-    checkRequestRequirements(req: express.Request): CompileRequestJsonBody {
-        if (req.body.options === undefined) throw new Error('Missing options property');
-        if (req.body.source === undefined) throw new Error('Missing source property');
-        return req.body;
+    static checkRequestRequirements(body: any): CompileRequestJsonBody {
+        if (body.options === undefined) throw new Error('Missing options property');
+        if (body.source === undefined) throw new Error('Missing source property');
+        return body;
     }
 
-    parseRequest(req: express.Request, compiler: BaseCompiler): ParsedRequest {
+    static parseRequestReusable(isJson: boolean, query: any, body: any, compiler: BaseCompiler): ParsedRequest {
         let source: string;
         let options: string;
         let backendOptions: Record<string, any> = {};
@@ -400,9 +416,9 @@ export class CompileHandler implements ICompileHandler {
         const execReqParams: UnparsedExecutionParams = {};
         let libraries: any[] = [];
         // IF YOU MODIFY ANYTHING HERE PLEASE UPDATE THE DOCUMENTATION!
-        if (req.is('json')) {
+        if (isJson) {
             // JSON-style request
-            const jsonRequest = this.checkRequestRequirements(req);
+            const jsonRequest = CompileHandler.checkRequestRequirements(body);
             const requestOptions = jsonRequest.options;
             source = jsonRequest.source;
             if (jsonRequest.bypassCache) bypassCache = jsonRequest.bypassCache;
@@ -415,8 +431,8 @@ export class CompileHandler implements ICompileHandler {
             filters = {...compiler.getDefaultFilters(), ...requestOptions.filters};
             inputTools = requestOptions.tools || [];
             libraries = requestOptions.libraries || [];
-        } else if (req.body?.compiler) {
-            const textRequest = req.body as CompileRequestTextBody;
+        } else if (body?.compiler) {
+            const textRequest = body as CompileRequestTextBody;
             source = textRequest.source;
             if (textRequest.bypassCache) bypassCache = textRequest.bypassCache;
             options = textRequest.userArguments;
@@ -432,8 +448,7 @@ export class CompileHandler implements ICompileHandler {
             backendOptions.skipAsm = textRequest.skipAsm === 'true';
         } else {
             // API-style
-            source = req.body;
-            const query = req.query as CompileRequestQueryArgs;
+            source = body || '';
             options = query.options || '';
             // By default we get the default filters.
             filters = compiler.getDefaultFilters();
@@ -454,18 +469,11 @@ export class CompileHandler implements ICompileHandler {
             // Ask for asm not to be returned
             backendOptions.skipAsm = query.skipAsm === 'true';
             backendOptions.skipPopArgs = query.skipPopArgs === 'true';
+            backendOptions.filterAnsi = query.filterAnsi === 'true';
         }
-        const executeParameters: ExecutionParams = {
-            args: Array.isArray(execReqParams.args) ? execReqParams.args || '' : splitArguments(execReqParams.args),
-            stdin: execReqParams.stdin || '',
-            runtimeTools: execReqParams.runtimeTools || [],
-        };
-
-        const tools: ActiveTool[] = inputTools.map(tool => {
-            // expand tools.args to an array using utils.splitArguments if it was a string
-            if (typeof tool.args === 'string') tool.args = splitArguments(tool.args);
-            return tool as ActiveTool;
-        });
+        // Use shared parsing utilities for consistency with SQS workers
+        const executeParameters = parseExecutionParameters(execReqParams);
+        const tools = parseTools(inputTools);
 
         // Backwards compatibility: bypassCache used to be a boolean.
         // Convert a boolean input to an enum's underlying numeric value
@@ -473,7 +481,7 @@ export class CompileHandler implements ICompileHandler {
 
         return {
             source,
-            options: splitArguments(options),
+            options: parseUserArguments(options), // Use shared utility for consistency
             backendOptions,
             filters,
             bypassCache,
@@ -481,6 +489,14 @@ export class CompileHandler implements ICompileHandler {
             executeParameters,
             libraries,
         };
+    }
+
+    parseRequest(req: express.Request, compiler: BaseCompiler): ParsedRequest {
+        const isJson = !!req.is('json');
+        const query = req.query as CompileRequestQueryArgs;
+        const body = req.body;
+
+        return CompileHandler.parseRequestReusable(isJson, query, body, compiler);
     }
 
     handlePopularArguments(req: express.Request, res: express.Response) {
@@ -559,6 +575,7 @@ export class CompileHandler implements ICompileHandler {
                 .then(result => {
                     if (result.didExecute || result.execResult?.didExecute)
                         this.cmakeExecuteCounter.inc({language: compiler.lang.id});
+                    delete result.s3Key; // Remove s3Key before sending to user
                     res.send(result);
                 })
                 .catch(e => {
@@ -630,6 +647,7 @@ export class CompileHandler implements ICompileHandler {
                     if (result.didExecute || result.execResult?.didExecute)
                         this.executeCounter.inc({language: compiler.lang.id});
                     if (req.accepts(['text', 'json']) === 'json') {
+                        delete result.s3Key; // Remove s3Key before sending to user
                         res.send(result);
                     } else {
                         res.set('Content-Type', 'text/plain');

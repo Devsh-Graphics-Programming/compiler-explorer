@@ -25,7 +25,7 @@
 import {Buffer} from 'buffer';
 import $ from 'jquery';
 import * as monaco from 'monaco-editor';
-// @ts-ignore
+import {editor} from 'monaco-editor';
 import * as monacoVim from 'monaco-vim';
 import TomSelect from 'tom-select';
 import _ from 'underscore';
@@ -42,21 +42,23 @@ import * as loadSaveLib from '../widgets/load-save.js';
 import '../formatter-registry';
 import '../modes/_all';
 import {Container} from 'golden-layout';
-import {editor} from 'monaco-editor';
-import {Language, LanguageKey} from '../../types/languages.interfaces.js';
-import {Hub} from '../hub.js';
-import {EditorState, LanguageSelectData} from './editor.interfaces.js';
-import {MonacoPaneState, PaneState} from './pane.interfaces.js';
-import {MonacoPane} from './pane.js';
-import IModelDeltaDecoration = editor.IModelDeltaDecoration;
 import type {escape_html} from 'tom-select/dist/types/utils.js';
+import {assert, unwrap} from '../../shared/assert.js';
 import {escapeHTML, isString} from '../../shared/common-utils.js';
 import {CompilationResult} from '../../types/compilation/compilation.interfaces.js';
 import {CompilerInfo} from '../../types/compiler.interfaces.js';
+import {Language, LanguageKey} from '../../types/languages.interfaces.js';
 import {MessageWithLocation, ResultLine} from '../../types/resultline/resultline.interfaces.js';
-import {assert, unwrap} from '../assert.js';
+import {Hub} from '../hub.js';
 import {Decoration, Motd} from '../motd.interfaces.js';
 import {Compiler} from './compiler.js';
+import {EditorState} from './editor.interfaces.js';
+import {MonacoPaneState, PaneState} from './pane.interfaces.js';
+import {MonacoPane} from './pane.js';
+
+import IModelDeltaDecoration = editor.IModelDeltaDecoration;
+
+import {getStaticImage} from '../utils';
 
 const loadSave = new loadSaveLib.LoadSave();
 const languages = options.languages;
@@ -260,6 +262,9 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
         const source = this.getSource();
         if (!force && source === this.lastChangeEmitted) return;
 
+        if (this.settings.formatOnCompile) {
+            this.runFormatDocumentAction();
+        }
         this.updateExtraDecorations();
 
         this.lastChangeEmitted = source ?? null;
@@ -338,8 +343,6 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
         this.container.layoutManager.on('initialised', () => {
             // Once initialized, let everyone know what text we have.
             this.maybeEmitChange();
-            // And maybe ask for a compilation (Will hit the cache most of the time)
-            this.requestCompilation();
         });
 
         this.eventHub.on('treeCompilerEditorIncludeChange', this.onTreeCompilerEditorIncludeChange, this);
@@ -446,18 +449,22 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
 
     onEscapeKey(): void {
         if ((this.editor as any).vimInUse) {
-            const currentState = monacoVim.VimMode.Vim.maybeInitVimState_(this.vimMode);
+            // The Vim property exists at runtime but isn't in the type definitions
+            const Vim = (monacoVim.VimMode as any).Vim;
+            const currentState = Vim.maybeInitVimState_(this.vimMode);
             if (currentState.insertMode) {
-                monacoVim.VimMode.Vim.exitInsertMode(this.vimMode);
+                Vim.exitInsertMode(this.vimMode);
             } else if (currentState.visualMode) {
-                monacoVim.VimMode.Vim.exitVisualMode(this.vimMode, false);
+                Vim.exitVisualMode(this.vimMode, false);
             }
         }
     }
 
     onInsertKey(event: JQuery.TriggeredEvent<Document, undefined, Document, Document>): void {
         if ((this.editor as any).vimInUse) {
-            const currentState = monacoVim.VimMode.Vim.maybeInitVimState_(this.vimMode);
+            // The Vim property exists at runtime but isn't in the type definitions
+            const Vim = (monacoVim.VimMode as any).Vim;
+            const currentState = Vim.maybeInitVimState_(this.vimMode);
             if (!currentState.insertMode) {
                 const insertEvent = {
                     preventDefault: event.preventDefault,
@@ -716,7 +723,7 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
         const states: any[] = [];
 
         for (const compilerIdStr of Object.keys(this.ourCompilers)) {
-            const compilerId = Number.parseInt(compilerIdStr);
+            const compilerId = Number.parseInt(compilerIdStr, 10);
 
             const glCompiler: Compiler | undefined = _.find(
                 this.container.layoutManager.root.getComponentsByName('compiler'),
@@ -734,7 +741,7 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
 
     updateOpenInCppInsights(): void {
         if (options.thirdPartyIntegrationEnabled) {
-            let cppStd = 'cpp2a';
+            let cppStd = 'cpp17';
 
             const compilers = this.getCompilerStates();
             compilers.forEach(compiler => {
@@ -752,9 +759,23 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
                     cppStd = 'cpp17';
                 } else if (
                     compiler.options.indexOf('-std=c++2a') !== -1 ||
-                    compiler.options.indexOf('-std=gnu++2a') !== -1
+                    compiler.options.indexOf('-std=c++20') !== -1 ||
+                    compiler.options.indexOf('-std=gnu++2a') !== -1 ||
+                    compiler.options.indexOf('-std=gnu++20') !== -1
                 ) {
-                    cppStd = 'cpp2a';
+                    cppStd = 'cpp20';
+                } else if (
+                    compiler.options.indexOf('-std=c++2b') !== -1 ||
+                    compiler.options.indexOf('-std=c++23') !== -1 ||
+                    compiler.options.indexOf('-std=gnu++2b') !== -1 ||
+                    compiler.options.indexOf('-std=gnu++23') !== -1
+                ) {
+                    cppStd = 'cpp23';
+                } else if (
+                    compiler.options.indexOf('-std=c++2c') !== -1 ||
+                    compiler.options.indexOf('-std=gnu++2c') !== -1
+                ) {
+                    cppStd = 'cpp2c';
                 } else if (compiler.options.indexOf('-std=c++98') !== -1) {
                     cppStd = 'cpp98';
                 }
@@ -898,19 +919,6 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
         }
     }
 
-    requestCompilation(): void {
-        this.eventHub.emit('requestCompilation', this.id, false);
-        if (this.settings.formatOnCompile) {
-            this.runFormatDocumentAction();
-        }
-
-        this.hub.trees.forEach(tree => {
-            if (tree.multifileService.isEditorPartOfProject(this.id)) {
-                this.eventHub.emit('requestCompilation', this.id, tree.id);
-            }
-        });
-    }
-
     override registerEditorActions(): void {
         this.editor.addAction({
             id: 'compile',
@@ -920,9 +928,11 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
             contextMenuGroupId: 'navigation',
             contextMenuOrder: 1.5,
             run: () => {
-                // This change request is mostly superfluous
                 this.maybeEmitChange();
-                this.requestCompilation();
+                // If compileOnChange is disabled, we need to request compilation manually.
+                if (!this.settings.compileOnChange) {
+                    this.eventHub.emit('requestCompilation', this.id, false);
+                }
             },
         });
 
@@ -1059,7 +1069,9 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
         if (cpprefLangs.includes(preferredLanguage)) {
             langTag = preferredLanguage;
         }
-        const url = 'https://' + langTag + '.cppreference.com/mwiki/index.php?search=' + encodeURIComponent(word.word);
+        const url =
+            'https://www.google.com/search?q=' +
+            encodeURIComponent(word.word + ' site:' + langTag + '.cppreference.com');
         window.open(url, '_blank', 'noopener');
     }
 
@@ -1191,7 +1203,7 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
                     try {
                         const res = JSON.parse(xhr.responseText);
                         error = res.answer || error;
-                    } catch (e) {
+                    } catch {
                         // continue regardless of error
                     }
                 }
@@ -1235,7 +1247,7 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
             //     enabled: this.settings.colouriseBrackets,
             //     independentColorPoolPerBracketType: true,
             // },
-            // @ts-ignore once the bug is fixed we can remove this suppression
+            // @ts-expect-error once the bug is fixed we can remove this suppression
             'bracketPairColorization.enabled': this.settings.colouriseBrackets,
             useVim: this.settings.useVim,
             quickSuggestions: this.settings.showQuickSuggestions,
@@ -1462,17 +1474,17 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
         const editorModel = this.editor.getModel();
         const widgets = _.compact(
             output.map(obj => {
-                if (!obj.tag) return;
+                if (!obj.tag) return undefined;
 
                 const trees = this.hub.trees;
                 if (trees && trees.length > 0) {
                     if (obj.tag.file) {
                         if (this.id !== trees[0].multifileService.getEditorIdByFilename(obj.tag.file)) {
-                            return;
+                            return undefined;
                         }
                     } else {
                         if (this.id !== trees[0].multifileService.getMainSourceEditorId()) {
-                            return;
+                            return undefined;
                         }
                     }
                 }
@@ -1828,7 +1840,6 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
                         this.setFilename(filename);
                         this.updateState();
                         this.maybeEmitChange(true);
-                        this.requestCompilation();
                     },
                     this.getSource(),
                     this.currentLanguage,
@@ -1860,7 +1871,6 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
                 this.decorations = {};
                 if (!firstTime) {
                     this.maybeEmitChange(true);
-                    this.requestCompilation();
                 }
             }
             this.waitingForLanguage = false;
@@ -1915,48 +1925,45 @@ export class Editor extends MonacoPane<monaco.editor.IStandaloneCodeEditor, Edit
         this.hub.removeEditor(this.id);
     }
 
-    getSelectizeRenderHtml(
-        data: LanguageSelectData,
-        escapeHtml: typeof escape_html,
-        width: number,
-        height: number,
-    ): string {
-        let result =
-            '<div class="d-flex" style="align-items: center">' +
-            '<div class="me-1 d-flex" style="align-items: center">' +
-            '<img src="' +
-            (data.logoData ? data.logoData : '') +
-            '" class="' +
-            (data.logoDataDark ? 'theme-light-only' : '') +
-            '" width="' +
-            width +
-            '" style="max-height: ' +
-            height +
-            'px"/>';
-        if (data.logoDataDark) {
-            result +=
-                '<img src="' +
-                data.logoDataDark +
-                '" class="theme-dark-only" width="' +
-                width +
-                '" style="max-height: ' +
-                height +
-                'px"/>';
-        }
-
-        result += '</div><div';
-        if (data.tooltip) {
-            result += ' title="' + data.tooltip + '"';
-        }
-        result += '>' + escapeHtml(data.name) + '</div></div>';
-        return result;
+    getSelectizeRenderHtml(language: Language, escapeHtml: typeof escape_html, width: number, height: number): string {
+        return `
+        <div class='d-flex' style='align-items: center'>
+          <div class='me-1 d-flex' style='align-items: center; width: ${width}px; height: ${height}px'>
+            ${
+                language.logoFilename !== null
+                    ? `
+                <img src='${getStaticImage(language.logoFilename, 'logos')}'
+                     alt='Logo for ${escapeHtml(language.name)}'
+                     class='${language.logoFilenameDark ? 'theme-light-only' : ''}'
+                     width='${width}px'
+                     height='${height}px' />
+                `
+                    : ''
+            }
+            ${
+                language.logoFilenameDark !== null
+                    ? `
+                <img src='${getStaticImage(language.logoFilenameDark, 'logos')}'
+                     alt='Logo for ${escapeHtml(language.name)}'
+                     class='theme-dark-only'
+                     width='${width}px'
+                     height='${height}px' />
+               `
+                    : ''
+            }
+          </div>
+          <div title='${language.tooltip ?? ''}'>
+            ${escapeHtml(language.name)}
+          </div>
+        </div>
+        `;
     }
 
-    renderSelectizeOption(data: LanguageSelectData, escapeHtml: typeof escape_html) {
+    renderSelectizeOption(data: Language, escapeHtml: typeof escape_html) {
         return this.getSelectizeRenderHtml(data, escapeHtml, 23, 23);
     }
 
-    renderSelectizeItem(data: LanguageSelectData, escapeHtml: typeof escape_html) {
+    renderSelectizeItem(data: Language, escapeHtml: typeof escape_html) {
         return this.getSelectizeRenderHtml(data, escapeHtml, 20, 20);
     }
 

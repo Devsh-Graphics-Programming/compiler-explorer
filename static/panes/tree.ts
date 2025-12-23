@@ -27,13 +27,13 @@ import {Container} from 'golden-layout';
 import $ from 'jquery';
 import TomSelect from 'tom-select';
 import _ from 'underscore';
+import {assert, unwrap, unwrapString} from '../../shared/assert.js';
 import {escapeHTML} from '../../shared/common-utils.js';
 import {LanguageKey} from '../../types/languages.interfaces.js';
 import {ResultLine} from '../../types/resultline/resultline.interfaces.js';
-import {assert, unwrap, unwrapString} from '../assert.js';
 import * as BootstrapUtils from '../bootstrap-utils.js';
-import {createDragSource} from '../components.js';
 import * as Components from '../components.js';
+import {createDragSource} from '../components.js';
 import {EventHub} from '../event-hub.js';
 import {Hub} from '../hub.js';
 import {LineColouring} from '../line-colouring.js';
@@ -271,7 +271,7 @@ export class Tree {
 
     private sendChangesToAllEditors() {
         for (const compilerId in this.ourCompilers) {
-            this.sendCompilerChangesToEditor(Number.parseInt(compilerId));
+            this.sendCompilerChangesToEditor(Number.parseInt(compilerId, 10));
         }
     }
 
@@ -653,7 +653,7 @@ export class Tree {
         this.lineColouring.clear();
 
         for (const [compilerId, asm] of Object.entries(this.asmByCompiler)) {
-            this.lineColouring.addFromAssembly(Number.parseInt(compilerId), asm);
+            this.lineColouring.addFromAssembly(Number.parseInt(compilerId, 10), asm);
         }
 
         this.lineColouring.calculate();
@@ -663,7 +663,7 @@ export class Tree {
 
     private updateColours() {
         for (const compilerId in this.ourCompilers) {
-            const id: number = Number.parseInt(compilerId);
+            const id: number = Number.parseInt(compilerId, 10);
             this.eventHub.emit(
                 'coloursForCompiler',
                 id,
@@ -684,7 +684,7 @@ export class Tree {
 
     private updateColoursNone() {
         for (const compilerId in this.ourCompilers) {
-            this.eventHub.emit('coloursForCompiler', Number.parseInt(compilerId), {}, this.settings.colourScheme);
+            this.eventHub.emit('coloursForCompiler', Number.parseInt(compilerId, 10), {}, this.settings.colourScheme);
         }
 
         this.multifileService.forEachOpenFile((file: MultifileFile) => {

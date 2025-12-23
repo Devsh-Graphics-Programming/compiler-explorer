@@ -26,17 +26,15 @@ import {Container} from 'golden-layout';
 import $ from 'jquery';
 import * as monaco from 'monaco-editor';
 import _ from 'underscore';
-
-import {OptRemark, OptState} from './opt-view.interfaces.js';
-import {MonacoPaneState} from './pane.interfaces.js';
-import {MonacoPane} from './pane.js';
-
+import {unwrap} from '../../shared/assert.js';
 import {CompilationResult} from '../../types/compilation/compilation.interfaces.js';
 import {CompilerInfo} from '../../types/compiler.interfaces.js';
-import {unwrap} from '../assert.js';
 import {Hub} from '../hub.js';
 import {extendConfig} from '../monaco-config.js';
 import {Toggles} from '../widgets/toggles.js';
+import {OptRemark, OptState} from './opt-view.interfaces.js';
+import {MonacoPaneState} from './pane.interfaces.js';
+import {MonacoPane} from './pane.js';
 
 export class Opt extends MonacoPane<monaco.editor.IStandaloneCodeEditor, OptState> {
     // Note: bool | undef here instead of just bool because of an issue with field initialization order
@@ -79,7 +77,7 @@ export class Opt extends MonacoPane<monaco.editor.IStandaloneCodeEditor, OptStat
     override registerButtons(state: OptState) {
         super.registerButtons(state);
         this.filters = new Toggles(this.domRoot.find('.filters'), state as unknown as Record<string, boolean>);
-        this.filters.on('change', this.showOptRemarks.bind(this));
+        this.filters.on('change', () => this.showOptRemarks());
 
         this.toggleWrapButton = new Toggles(this.domRoot.find('.options'), state as unknown as Record<string, boolean>);
         this.toggleWrapButton.on('change', this.onToggleWrapChange.bind(this));
@@ -172,7 +170,9 @@ export class Opt extends MonacoPane<monaco.editor.IStandaloneCodeEditor, OptStat
 
         this.editor?.changeViewZones(accessor => {
             const maxWidth = width ?? this.editor.getLayoutInfo().contentWidth;
-            this.optRemarkViewZoneIds.forEach(id => accessor.removeZone(id));
+            this.optRemarkViewZoneIds.forEach(id => {
+                accessor.removeZone(id);
+            });
             this.optRemarkViewZoneIds = remarksToDisplay.map(({displayString, optType, DebugLoc}) => {
                 const domNode = document.createElement('div');
                 domNode.classList.add('view-line', 'opt-line', optType.toLowerCase());

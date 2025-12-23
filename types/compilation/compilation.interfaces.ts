@@ -30,19 +30,19 @@ import type {PPOptions} from '../../static/panes/pp-view.interfaces.js';
 import {suCodeEntry} from '../../static/panes/stack-usage-view.interfaces.js';
 import {ParsedAsmResultLine} from '../asmresult/asmresult.interfaces.js';
 import {CompilerInfo} from '../compiler.interfaces.js';
+import {PossibleArguments} from '../compiler-arguments.interfaces.js';
 import {BasicExecutionResult, ConfiguredRuntimeTools} from '../execution/execution.interfaces.js';
 import {ParseFiltersAndOutputOptions} from '../features/filters.interfaces.js';
 import {InstructionSet} from '../instructionsets.js';
 import {SelectedLibraryVersion} from '../libraries/libraries.interfaces.js';
 import {ResultLine} from '../resultline/resultline.interfaces.js';
 import {Artifact, ToolResult} from '../tool.interfaces.js';
-
-import {PossibleArguments} from '../compiler-arguments.interfaces.js';
 import {CFGResult} from './cfg.interfaces.js';
 import {ClangirBackendOptions} from './clangir.interfaces.js';
 import {ConfiguredOverrides} from './compiler-overrides.interfaces.js';
 import {LLVMIrBackendOptions} from './ir.interfaces.js';
 import {OptPipelineBackendOptions, OptPipelineOutput} from './opt-pipeline-output.interfaces.js';
+import {YulBackendOptions} from './yul.interfaces.js';
 
 export type ActiveTool = {
     id: string;
@@ -73,6 +73,7 @@ export type LibsAndOptions = {
 export type GccDumpFlags = {
     gimpleFe: boolean;
     address: boolean;
+    alias: boolean;
     slim: boolean;
     raw: boolean;
     details: boolean;
@@ -116,6 +117,8 @@ export type CompilationRequestOptions = {
         produceHaskellCore?: boolean;
         produceHaskellStg?: boolean;
         produceHaskellCmm?: boolean;
+        produceClojureMacroExp?: boolean;
+        produceYul?: YulBackendOptions | null;
         cmakeArgs?: string;
         customOutputFilename?: string;
         overrides?: ConfiguredOverrides;
@@ -213,6 +216,10 @@ export type CompilationResult = {
     haskellStgOutput?: ResultLine[];
     haskellCmmOutput?: ResultLine[];
 
+    clojureMacroExpOutput?: ResultLine[];
+
+    yulOutput?: ResultLine[];
+
     forceBinaryView?: boolean;
 
     artifacts?: Artifact[];
@@ -222,16 +229,20 @@ export type CompilationResult = {
     retreivedFromCache?: boolean;
     retreivedFromCacheTime?: number;
     packageDownloadAndUnzipTime?: number;
+    packageStoreTime?: number;
     execTime?: number;
     processExecutionResultTime?: number;
     objdumpTime?: number;
     parsingTime?: number;
+    queueTime?: number;
 
     source?: string; // todo: this is a crazy hack, we should get rid of it
 
     instructionSet?: InstructionSet;
 
     popularArguments?: PossibleArguments;
+
+    s3Key?: string; // Cache key hash for S3 storage reference
 };
 
 export type ExecutionOptions = {
@@ -299,7 +310,7 @@ export type SingleFileCacheKey = {
     filters?: any;
     tools: any[];
     libraries: SelectedLibraryVersion[];
-    files: any[];
+    files: FiledataPair[];
 };
 
 export type CmakeCacheKey = Omit<SingleFileCacheKey, 'tools'> & {
@@ -316,3 +327,13 @@ export type FiledataPair = {
 };
 
 export type BufferOkFunc = (buffer: Buffer) => boolean;
+
+// Maximum safe WebSocket message size for AWS API Gateway and ALB
+// AWS API Gateway has a 32 KiB frame size limit for WebSocket messages
+// We use 31 KiB as a conservative threshold to account for protocol overhead
+export const WEBSOCKET_SIZE_THRESHOLD = 31 * 1024;
+
+// TTL for temporary S3 storage of large compilation results in worker mode
+// Set to 1 day to provide sufficient time for retrieval while ensuring
+// temporary data doesn't persist indefinitely
+export const TEMP_STORAGE_TTL_DAYS = 1;

@@ -29,16 +29,7 @@ import * as monaco from 'monaco-editor';
 import scrollIntoView from 'scroll-into-view-if-needed';
 import TomSelect from 'tom-select';
 import _ from 'underscore';
-
-import {OptPipelineViewState} from './opt-pipeline.interfaces.js';
-import {MonacoPaneState} from './pane.interfaces.js';
-import {MonacoPane} from './pane.js';
-
-import {Hub} from '../hub.js';
-import {extendConfig} from '../monaco-config.js';
-import * as utils from '../utils.js';
-import {Toggles} from '../widgets/toggles.js';
-
+import {unwrap, unwrapString} from '../../shared/assert.js';
 import {escapeHTML} from '../../shared/common-utils.js';
 import {CompilationResult} from '../../types/compilation/compilation.interfaces.js';
 import {
@@ -47,7 +38,13 @@ import {
     OptPipelineResults,
 } from '../../types/compilation/opt-pipeline-output.interfaces.js';
 import {CompilerInfo} from '../../types/compiler.interfaces.js';
-import {unwrap, unwrapString} from '../assert.js';
+import {Hub} from '../hub.js';
+import {extendConfig} from '../monaco-config.js';
+import * as utils from '../utils.js';
+import {Toggles} from '../widgets/toggles.js';
+import {OptPipelineViewState} from './opt-pipeline.interfaces.js';
+import {MonacoPaneState} from './pane.interfaces.js';
+import {MonacoPane} from './pane.js';
 
 const MIN_SIDEBAR_WIDTH = 100;
 
@@ -416,7 +413,7 @@ export class OptPipeline extends MonacoPane<monaco.editor.IStandaloneDiffEditor,
             const target = e.target;
             this.passesList.find('.active').removeClass('active');
             $(target).addClass('active');
-            this.displayPass(Number.parseInt(unwrap(target.getAttribute('data-i'))));
+            this.displayPass(Number.parseInt(unwrap(target.getAttribute('data-i')), 10));
         });
         // try to select a pass
         if (this.state.selectedIndex >= passes.length) {
@@ -487,7 +484,7 @@ export class OptPipeline extends MonacoPane<monaco.editor.IStandaloneDiffEditor,
                         scrollMode: 'if-needed',
                         block: 'nearest',
                     });
-                    this.displayPass(Number.parseInt(unwrap(prev.getAttribute('data-i'))));
+                    this.displayPass(Number.parseInt(unwrap(prev.getAttribute('data-i')), 10));
                 }
             }
             if (e.key === 'ArrowDown') {
@@ -501,7 +498,7 @@ export class OptPipeline extends MonacoPane<monaco.editor.IStandaloneDiffEditor,
                         scrollMode: 'if-needed',
                         block: 'nearest',
                     });
-                    this.displayPass(Number.parseInt(unwrap(next.getAttribute('data-i'))));
+                    this.displayPass(Number.parseInt(unwrap(next.getAttribute('data-i')), 10));
                 }
             }
         }

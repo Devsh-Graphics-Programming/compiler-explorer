@@ -22,13 +22,12 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import {Buffer} from 'buffer';
 import crypto from 'node:crypto';
+import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-
-import fs from 'node:fs/promises';
+import {Buffer} from 'buffer';
 import {ComponentConfig, ItemConfigType} from 'golden-layout';
 import semverParser from 'semver';
 import _ from 'underscore';
@@ -176,8 +175,8 @@ function applyParse_SourceWithLine(lineObj: ResultLine, filteredLine: string, in
     if (match) {
         const message = match[4].trim();
         lineObj.tag = {
-            line: Number.parseInt(match[1]),
-            column: Number.parseInt(match[3] || '0'),
+            line: Number.parseInt(match[1], 10),
+            column: Number.parseInt(match[3] || '0', 10),
             text: message,
             severity: parseSeverity(message),
             file: inputFilename ? path.basename(inputFilename) : undefined,
@@ -191,8 +190,8 @@ function applyParse_FileWithLine(lineObj: ResultLine, filteredLine: string) {
         const message = match[5].trim();
         lineObj.tag = {
             file: match[1],
-            line: Number.parseInt(match[2]),
-            column: Number.parseInt(match[4] || '0'),
+            line: Number.parseInt(match[2], 10),
+            column: Number.parseInt(match[4] || '0', 10),
             text: message,
             severity: parseSeverity(message),
         };
@@ -205,7 +204,7 @@ function applyParse_AtFileLine(lineObj: ResultLine, filteredLine: string) {
         if (match[1].startsWith('/app/')) {
             lineObj.tag = {
                 file: match[1].replace(/^\/app\//, ''),
-                line: Number.parseInt(match[2]),
+                line: Number.parseInt(match[2], 10),
                 column: 0,
                 text: filteredLine,
                 severity: 3,
@@ -213,7 +212,7 @@ function applyParse_AtFileLine(lineObj: ResultLine, filteredLine: string) {
         } else if (!match[1].startsWith('/')) {
             lineObj.tag = {
                 file: match[1],
-                line: Number.parseInt(match[2]),
+                line: Number.parseInt(match[2], 10),
                 column: 0,
                 text: filteredLine,
                 severity: 3,
@@ -256,6 +255,7 @@ export function parseOutput(
 }
 
 export function parseRustOutput(lines: string, inputFilename?: string, pathPrefix?: string) {
+    const inputBasename = inputFilename ? path.basename(inputFilename) : undefined;
     const quickfixes: {re: RegExp; makeFix: (match: string[]) => Fix}[] = [
         {
             re: / *help: add `#!\[feature\((.*?)\)]`/,
@@ -278,9 +278,9 @@ export function parseRustOutput(lines: string, inputFilename?: string, pathPrefi
                 title: `Add import for \`${path}\``,
                 edits: [
                     {
-                        line: Number.parseInt(line),
+                        line: Number.parseInt(line, 10),
                         column: 1,
-                        endline: Number.parseInt(line),
+                        endline: Number.parseInt(line, 10),
                         endcolumn: 1,
                         text: `${indentation}use ${path};\n`,
                     },
@@ -289,7 +289,7 @@ export function parseRustOutput(lines: string, inputFilename?: string, pathPrefi
         },
     ];
 
-    const re = /^\s+-->\s+<source>[(:](\d+)(:?,?(\d+):?)?[):]*\s*(.*)/;
+    const re = /^\s+-->\s+(?<filename>.*):(?<line>\d+):(?<column>\d+)/;
     const result: ResultLine[] = [];
     let currentDiagnostic: ResultLine | undefined;
     eachLine(lines, line => {
@@ -299,14 +299,17 @@ export function parseRustOutput(lines: string, inputFilename?: string, pathPrefi
             const filteredLine = filterEscapeSequences(line);
             const match = filteredLine.match(re);
 
-            if (match) {
-                const line = Number.parseInt(match[1]);
-                const column = Number.parseInt(match[3] || '0');
+            if (match?.groups) {
+                const file =
+                    match.groups.filename === '<source>' ? inputBasename : path.basename(match.groups.filename);
+                const line = Number.parseInt(match.groups.line, 10);
+                const column = Number.parseInt(match.groups.column, 10);
 
                 currentDiagnostic = result.pop();
                 if (currentDiagnostic !== undefined) {
                     const text = filterEscapeSequences(currentDiagnostic.text);
                     currentDiagnostic.tag = {
+                        file,
                         line,
                         column,
                         text,
@@ -317,6 +320,7 @@ export function parseRustOutput(lines: string, inputFilename?: string, pathPrefi
                 }
 
                 lineObj.tag = {
+                    file,
                     line,
                     column,
                     text: '', // Left empty so that it does not show up in the editor
@@ -457,7 +461,7 @@ export function squashHorizontalWhitespace(line: string, atStart = true): string
 export function toProperty(prop: string): boolean | number | string {
     if (prop === 'true' || prop === 'yes') return true;
     if (prop === 'false' || prop === 'no') return false;
-    if (/^-?(0|[1-9]\d*)$/.test(prop)) return Number.parseInt(prop);
+    if (/^-?(0|[1-9]\d*)$/.test(prop)) return Number.parseInt(prop, 10);
     if (/^-?\d*\.\d+$/.test(prop)) return Number.parseFloat(prop);
     return prop;
 }
@@ -628,7 +632,7 @@ export function resultLinesToText(lines: ResultLine[]): string {
 export async function tryReadTextFile(filename: string): Promise<string | undefined> {
     try {
         return await fs.readFile(filename, 'utf8');
-    } catch (e) {
+    } catch {
         return undefined;
     }
 }

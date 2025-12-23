@@ -58,8 +58,6 @@ function createMockAppArgs(overrides: Partial<AppArguments> = {}): AppArguments 
 }
 
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
-
-import type {AppArguments} from '../../lib/app.interfaces.js';
 import {
     createPropertyHierarchy,
     filterLanguages,
@@ -67,12 +65,15 @@ import {
     measureEventLoopLag,
     setupEventLoopLagMonitoring,
 } from '../../lib/app/config.js';
+import type {AppArguments} from '../../lib/app.interfaces.js';
 import * as logger from '../../lib/logger.js';
 import * as props from '../../lib/properties.js';
-import type {CompilerProps} from '../../lib/properties.js';
 import type {Language, LanguageKey} from '../../types/languages.interfaces.js';
 
 // Mock modules
+// Vitest 4.0 requires constructor mocks to be actual classes/functions, not arrow functions.
+// We define classes directly here because .mockImplementation() gets auto-converted to arrow
+// functions by Biome, which breaks constructor calls. Do not refactor to arrow functions!
 vi.mock('node:os', async () => {
     const actual = await vi.importActual('node:os');
     return {
@@ -93,28 +94,30 @@ vi.mock('../../lib/logger.js', async () => {
     };
 });
 
+// Shared mock implementation for ceProps
+const cePropsImpl = vi.fn();
+
 vi.mock('../../lib/properties.js', async () => {
     const actual = await vi.importActual('../../lib/properties.js');
+    class MockCompilerProps {
+        ceProps = cePropsImpl;
+    }
     return {
         ...actual,
         initialize: vi.fn(),
         propsFor: vi.fn(),
         setDebug: vi.fn(),
-        CompilerProps: vi.fn().mockImplementation(() => ({
-            ceProps: vi.fn(),
-        })),
+        CompilerProps: MockCompilerProps,
     };
 });
 
-// Mock PromClient.Gauge class
-class MockGauge {
-    set = vi.fn();
-}
-
 vi.mock('prom-client', () => {
+    class MockGauge {
+        set = vi.fn();
+    }
     return {
         default: {
-            Gauge: vi.fn().mockImplementation(() => new MockGauge()),
+            Gauge: MockGauge,
         },
     };
 });
@@ -145,7 +148,7 @@ describe('Config Module', () => {
 
             // Ensure hostname is properly mocked
             hostnameBackup = os.hostname;
-            os.hostname = vi.fn().mockReturnValue('test-hostname');
+            os.hostname = vi.fn(() => 'test-hostname');
         });
 
         afterEach(() => {
@@ -204,8 +207,8 @@ describe('Config Module', () => {
             monaco: id,
             formatter: null,
             supportsExecute: null,
-            logoUrl: null,
-            logoUrlDark: null,
+            logoFilename: null,
+            logoFilenameDark: null,
             example: '',
             previewFilter: null,
             monacoDisassembly: null,
@@ -216,7 +219,9 @@ describe('Config Module', () => {
 
         beforeEach(() => {
             // Reset and recreate test languages before each test
-            Object.keys(mockLanguages).forEach(key => delete mockLanguages[key as LanguageKey]);
+            Object.keys(mockLanguages).forEach(key => {
+                delete mockLanguages[key as LanguageKey];
+            });
 
             mockLanguages['c++'] = createMockLanguage('c++', 'C++', ['cpp']);
             mockLanguages.c = createMockLanguage('c', 'C', ['c99', 'c11']);
@@ -277,7 +282,7 @@ describe('Config Module', () => {
         });
 
         it('should not set up monitoring if interval is 0', () => {
-            const mockCeProps = vi.fn().mockImplementation((key: string, defaultValue: any) => {
+            const mockCeProps = vi.fn((key: string, defaultValue: any) => {
                 if (key === 'eventLoopMeasureIntervalMs') return 0;
                 return defaultValue;
             });
@@ -287,7 +292,7 @@ describe('Config Module', () => {
         });
 
         it('should set up monitoring if interval is greater than 0', () => {
-            const mockCeProps = vi.fn().mockImplementation((key: string, defaultValue: any) => {
+            const mockCeProps = vi.fn((key: string, defaultValue: any) => {
                 if (key === 'eventLoopMeasureIntervalMs') return 100;
                 if (key === 'eventLoopLagThresholdWarn') return 50;
                 if (key === 'eventLoopLagThresholdErr') return 100;
@@ -301,7 +306,6 @@ describe('Config Module', () => {
 
     describe('loadConfiguration', () => {
         let mockCeProps: any;
-        let mockCompilerProps: CompilerProps;
 
         beforeEach(() => {
             // Mock needed dependencies
@@ -322,14 +326,11 @@ describe('Config Module', () => {
                 return defaultValue;
             });
 
-            mockCompilerProps = {
-                ceProps: vi.fn().mockImplementation((key: string, defaultValue: any) => {
-                    if (key === 'storageSolution') return 'local';
-                    return defaultValue;
-                }),
-            } as any;
-
-            vi.spyOn(props, 'CompilerProps').mockImplementation(() => mockCompilerProps);
+            // Configure cePropsImpl to return the values we need
+            cePropsImpl.mockImplementation((key: string, defaultValue: any) => {
+                if (key === 'storageSolution') return 'local';
+                return defaultValue;
+            });
         });
 
         afterEach(() => {
@@ -347,7 +348,7 @@ describe('Config Module', () => {
             // Verify initialization happened correctly
             expect(props.initialize).toHaveBeenCalledWith(path.normalize('/test/root/config'), expect.any(Array));
             expect(props.propsFor).toHaveBeenCalledWith('compiler-explorer');
-            expect(props.CompilerProps).toHaveBeenCalled();
+            // CompilerProps is a class, not a spy, so we can't check if it was called
 
             // Verify expected result properties
             expect(result).toHaveProperty('ceProps');
@@ -358,7 +359,7 @@ describe('Config Module', () => {
             expect(result).toHaveProperty('extraBodyClass', 'test-class');
             expect(result).toHaveProperty('storageSolution', 'local');
             expect(result).toHaveProperty('httpRoot', '/ce/');
-            expect(result).toHaveProperty('staticRoot', '/ce/static/');
+            expect(result).toHaveProperty('staticRoot', '/ce/');
         });
 
         it('should enable property debugging when propDebug is true', () => {

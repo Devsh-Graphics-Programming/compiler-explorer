@@ -25,12 +25,14 @@
 import path from 'path';
 import fs from 'fs/promises';
 
-import type {ExecutionOptions} from '../../types/compilation/compilation.interfaces.js';
+import type {CompilationResult, ExecutionOptions} from '../../types/compilation/compilation.interfaces.js';
 import type {PreliminaryCompilerInfo} from '../../types/compiler.interfaces.js';
 import type {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces.js';
 import {BaseCompiler} from '../base-compiler.js';
 import {logger} from '../logger.js';
 import {SPIRVAsmParser} from '../parsers/asm-parser-spirv.js';
+import type {OptRemark} from '../../static/panes/opt-view.interfaces.js';
+import type {StackUsageInfo} from '../stack-usage-transformer.js';
 import * as utils from '../utils.js';
 import {splitArguments} from '../../shared/common-utils.js';
 import {unwrap} from '../assert.js';
@@ -153,9 +155,13 @@ export class NSCSPIRVCompiler extends BaseCompiler {
             const ppFilename = path.join(sourceDir, this.outputFilebase + '.i');
             if (await utils.fileExists(ppFilename)) {
                 const ppText = await fs.readFile(ppFilename, 'utf8');
-                result.stdout = result.stdout.concat(utils.parseOutput(ppText));
+                result.asm = ppText;
+            } else {
+                result.asm = '<No preprocessed output file>';
             }
             result.languageId = 'hlsl';
+            result.okToCache = false;
+            (result as any).preprocessOnly = true;
             return result;
         }
 
@@ -243,5 +249,17 @@ export class NSCSPIRVCompiler extends BaseCompiler {
         return {
             asm: ir.asm,
         };
+    }
+
+    override async postProcess(
+        result: CompilationResult,
+        outputFilename: string,
+        filters: ParseFiltersAndOutputOptions,
+        produceOptRemarks = false,
+    ): Promise<[CompilationResult, OptRemark[], StackUsageInfo[]]> {
+        if ((result as any).preprocessOnly) {
+            return [result, [] as OptRemark[], [] as StackUsageInfo[]];
+        }
+        return super.postProcess(result, outputFilename, filters, produceOptRemarks);
     }
 }

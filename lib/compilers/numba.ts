@@ -44,7 +44,7 @@ export class NumbaCompiler extends BaseCompiler {
             this.compilerProps('compilerWrapper', '') || resolvePathFromAppRoot('etc', 'scripts', 'numba_wrapper.py');
     }
 
-    override async processAsm(result, filters, options) {
+    override async processAsm(result, filters, options: string[]) {
         const processed = await super.processAsm(result, filters, options);
         // Numba's function-end labels survive standard filtering.
         if (filters.labels) {
@@ -57,7 +57,8 @@ export class NumbaCompiler extends BaseCompiler {
             if (!match) continue;
             item.text = item.text.slice(0, match.index);
             const inNvccCode = false;
-            if (this.asm.hasOpcode(item.text, inNvccCode)) item.source = {line: Number.parseInt(match[1]), file: null};
+            if (this.asm.hasOpcode(item.text, inNvccCode))
+                item.source = {line: Number.parseInt(match[1], 10), file: null};
         }
         return processed;
     }

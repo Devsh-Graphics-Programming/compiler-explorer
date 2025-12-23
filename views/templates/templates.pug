@@ -37,6 +37,10 @@ mixin monacopane(id)
   include panes/conformance
 
   include panes/tree
+  
+  include panes/explain
+
+  include panes/yul
 
   include widgets/compiler-selector
 
@@ -83,3 +87,7 @@ mixin monacopane(id)
   +monacopane("rustmacroexp")
 
   +monacopane("rusthir")
+
+  +monacopane("clojuremacroexp")
+
+  +monacopane("yul")

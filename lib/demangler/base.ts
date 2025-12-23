@@ -44,7 +44,7 @@ export class BaseDemangler extends AsmRegex {
     readonly includeMetadata: boolean;
     readonly compiler: BaseCompiler;
 
-    readonly jumpDef = /(j\w+|b|bl|blx)\s+([$_a-z][\w$@]*|"[$_a-z][\w$@]*")/i;
+    readonly jumpDef = /(j\w+|b|bl|blx)\s+([$_a-z][\w$.@]*|"[$_a-z][\w$.@]*")/i;
     readonly callDef = /callq?\s+([$._a-z][\w$.@]*|"[$._a-z][\w$.@]*")/i;
     readonly callPtrDef1 = /callq?.*ptr\s\[[a-z]*\s\+\s([$._a-z][\w$.@]*|"[$._a-z][\w$.@]*")]/i;
     readonly callPtrDef2 = /callq?\s+([$*._a-z][\w$.@]*|"[$*._a-z][\w$.@]*")/i;
@@ -219,7 +219,7 @@ export class BaseDemangler extends AsmRegex {
         return this.compiler.exec(this.demanglerExe, this.demanglerArguments, options);
     }
 
-    public async process(result: ParsedAsmResult, execOptions?: ExecutionOptions) {
+    public async process(result: ParsedAsmResult, execOptions?: ExecutionOptions): Promise<ParsedAsmResult> {
         const options = execOptions || {};
         this.result = result;
 

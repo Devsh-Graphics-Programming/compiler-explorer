@@ -22,16 +22,15 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+import fs from 'node:fs/promises';
 import type {ParsedAsmResult} from '../../types/asmresult/asmresult.interfaces.js';
 import {CompilationResult, ExecutionOptionsWithEnv} from '../../types/compilation/compilation.interfaces.js';
 import type {PreliminaryCompilerInfo} from '../../types/compiler.interfaces.js';
 import type {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces.js';
 import type {ResultLine} from '../../types/resultline/resultline.interfaces.js';
+import {unwrap} from '../assert.js';
 import {BaseCompiler} from '../base-compiler.js';
 import {CompilationEnvironment} from '../compilation-env.js';
-
-import fs from 'node:fs/promises';
-import {unwrap} from '../assert.js';
 import {BaseParser} from './argument-parsers.js';
 
 export class CarbonCompiler extends BaseCompiler {
@@ -146,7 +145,7 @@ export class CarbonExplorerCompiler extends BaseCompiler {
             // Hook to parse out the "result: 123" line at the end of the interpreted execution run.
             const re = /^result: (\d+)$/;
             const match = re.exec(this.lastLine(result.asm as ResultLine[]));
-            const code = match ? Number.parseInt(match[1]) : -1;
+            const code = match ? Number.parseInt(match[1], 10) : -1;
             result.execResult = {
                 stdout: result.stdout,
                 stderr: [],

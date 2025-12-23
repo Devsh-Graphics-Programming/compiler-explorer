@@ -22,9 +22,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'node:path';
-
 import fs from 'node:fs/promises';
+import path from 'node:path';
 
 import {splitArguments} from '../../shared/common-utils.js';
 import {CompilationInfo} from '../../types/compilation/compilation.interfaces.js';
@@ -63,7 +62,7 @@ export class PvsStudioTool extends BaseTool {
         // Collecting the flags of compilation
         let compileFlags = splitArguments(compilationInfo.compiler.options);
 
-        const includeflags = super.getIncludeArguments(compilationInfo.libraries, compilationInfo.compiler);
+        const includeflags = super.getIncludeArguments(compilationInfo.libraries, compilationInfo.compiler, sourceDir);
         compileFlags = compileFlags.concat(includeflags);
 
         const libOptions = super.getLibraryOptions(compilationInfo.libraries, compilationInfo.compiler);

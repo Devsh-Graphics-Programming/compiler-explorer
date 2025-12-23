@@ -80,6 +80,8 @@ export class PTXAsmParser extends AsmParser {
         this.functionCallEnd = /^\s*\)\s*;\s*$/;
 
         this.labelLine = /^\s*\$?[a-zA-Z_][a-zA-Z0-9_]*:.*$/;
+
+        this.hasOpcodeRe = /^\s*\{?\s*(@!?%\w+\s+)?(%[$.A-Z_a-z][\w$.]*\s*=\s*)?[A-Za-z]/;
     }
 
     override processAsm(asmResult: string, filters: ParseFiltersAndOutputOptions): ParsedAsmResult {
@@ -100,6 +102,9 @@ export class PTXAsmParser extends AsmParser {
         let inFunctionCall = false;
         let callBaseIndent = '';
         let braceDepth = 0;
+        let lineNumber = 0;
+        let openBraceLineNumber = 0;
+        let openBraceLineHasOpcode = false;
 
         for (let line of asmLines) {
             const newSource = this.processSourceLine(line, files);
@@ -181,8 +186,15 @@ export class PTXAsmParser extends AsmParser {
 
             if (this.functionStart.test(line)) {
                 braceDepth++;
+                openBraceLineNumber = lineNumber;
+                openBraceLineHasOpcode = this.hasOpcode(line);
             } else if (this.functionEnd.test(line)) {
                 braceDepth--;
+                // Remove paired braces with no content (but not if the opening brace line had an opcode)
+                if (openBraceLineNumber + 1 === lineNumber && !openBraceLineHasOpcode) {
+                    asm.pop();
+                    continue;
+                }
             }
 
             if (filters.trim) {
@@ -194,6 +206,7 @@ export class PTXAsmParser extends AsmParser {
                 source: this.hasOpcode(line) ? currentSource : null,
                 labels: [],
             });
+            lineNumber++;
         }
 
         const endTime = process.hrtime.bigint();
@@ -233,9 +246,9 @@ export class PTXAsmParser extends AsmParser {
     private processSourceLine(line: string, files: Record<number, string>): AsmResultSource | null {
         const locMatch = line.match(this.sourceTag);
         if (locMatch) {
-            const fileNum = Number.parseInt(locMatch[1]);
-            const lineNum = Number.parseInt(locMatch[2]);
-            const columnNum = Number.parseInt(locMatch[3]);
+            const fileNum = Number.parseInt(locMatch[1], 10);
+            const lineNum = Number.parseInt(locMatch[2], 10);
+            const columnNum = Number.parseInt(locMatch[3], 10);
 
             const file = files[fileNum];
             if (file) {

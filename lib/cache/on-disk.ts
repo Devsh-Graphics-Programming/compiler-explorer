@@ -22,11 +22,10 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import {Buffer} from 'buffer';
 import crypto from 'node:crypto';
-import path from 'node:path';
-
 import fs from 'node:fs';
+import path from 'node:path';
+import {Buffer} from 'buffer';
 import {LRUCache} from 'lru-cache';
 
 import type {GetResult} from '../../types/cache.interfaces.js';
@@ -71,7 +70,7 @@ export class OnDiskCache extends BaseCache {
                 if (stat.size === 0 || fullPath.endsWith('.tmp')) {
                     logger.info(`Removing old temporary or broken empty file ${fullPath}`);
                     fs.unlink(fullPath, () => {});
-                    return;
+                    return undefined;
                 }
                 return {
                     key: name,
@@ -86,10 +85,10 @@ export class OnDiskCache extends BaseCache {
 
         // Sort oldest first
 
-        // @ts-ignore filter(Boolean) should have sufficed but doesn't
+        // @ts-expect-error filter(Boolean) should have sufficed but doesn't
         info.sort((x, y) => x.sort - y.sort);
         for (const i of info) {
-            // @ts-ignore
+            // @ts-expect-error
             this.cache.set(i.key, i.data);
         }
     }

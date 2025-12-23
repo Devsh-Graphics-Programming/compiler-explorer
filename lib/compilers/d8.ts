@@ -22,9 +22,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'node:path';
-
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import _ from 'underscore';
 
 import type {ParsedAsmResult, ParsedAsmResultLine} from '../../types/asmresult/asmresult.interfaces.js';
@@ -272,7 +271,7 @@ export class D8Compiler extends BaseCompiler implements SimpleOutputFilenameComp
         let lineNumber;
         for (const l of asm.split(/\n/)) {
             if (this.lineNumberRegex.test(l)) {
-                lineNumber = Number.parseInt(l.match(this.lineNumberRegex)[1]);
+                lineNumber = Number.parseInt(l.match(this.lineNumberRegex)[1], 10);
                 segments.push({text: l, source: null});
             } else if (this.methodEndRegex.test(l)) {
                 lineNumber = null;
@@ -307,6 +306,7 @@ export class D8Compiler extends BaseCompiler implements SimpleOutputFilenameComp
     }
 
     override async getVersion() {
+        logger.info(`Gathering ${this.compiler.id} version information on ${this.compiler.exe}...`);
         const versionFile = path.join(path.dirname(this.compiler.exe), 'r8-version.properties');
         const versionInfo = await utils.tryReadTextFile(versionFile);
         const versionCode = (() => {

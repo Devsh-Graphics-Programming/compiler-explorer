@@ -35,6 +35,7 @@ export type AppArguments = {
     doCache: boolean;
     fetchCompilersFromRemote: boolean;
     ensureNoCompilerClash: boolean | undefined;
+    exitOnCompilerFailure?: boolean;
     prediscovered?: string;
     discoveryOnly?: string;
     staticPath?: string;
@@ -45,4 +46,5 @@ export type AppArguments = {
     loggingOptions: LoggingOptions;
     isWsl: boolean;
     devMode: boolean;
+    instanceColor?: string;
 };

@@ -29,8 +29,8 @@ import express from 'express';
 import {isString} from '../../shared/common-utils.js';
 import {Language} from '../../types/languages.interfaces.js';
 import {assert, unwrap} from '../assert.js';
-import {ClientStateGoldenifier, ClientStateNormalizer} from '../clientstate-normalizer.js';
 import {ClientState} from '../clientstate.js';
+import {ClientStateGoldenifier, ClientStateNormalizer} from '../clientstate-normalizer.js';
 import {logger} from '../logger.js';
 import {SentryCapture} from '../sentry.js';
 import {ExpandedShortLink} from '../storage/base.js';
@@ -84,7 +84,7 @@ export class RouteAPI {
 
     storedCodeHandler(req: express.Request, res: express.Response, next: express.NextFunction) {
         const id = req.params.id;
-        const sessionid = Number.parseInt(req.params.session);
+        const sessionid = Number.parseInt(req.params.session, 10);
         this.storageHandler
             .expandId(id)
             .then(result => {
@@ -225,16 +225,12 @@ export class RouteAPI {
             });
     }
 
-    escapeLine(req: express.Request, line: string) {
-        return line.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
-    }
-
     filterCode(req: express.Request, code: string, lang: Language) {
         let lines = code.split('\n');
         if (lang.previewFilter !== null) {
             lines = lines.filter(line => !lang.previewFilter || !lang.previewFilter.test(line));
         }
-        return lines.map(line => this.escapeLine(req, line)).join('\n');
+        return lines.join('\n');
     }
 
     getMetaDataFromLink(req: express.Request, link: ExpandedShortLink | null, config: any) {

@@ -22,15 +22,15 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'node:path';
-
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import _ from 'underscore';
 
 import type {
     CacheKey,
     CompilationCacheKey,
     ExecutionOptionsWithEnv,
+    FiledataPair,
 } from '../../types/compilation/compilation.interfaces.js';
 import type {PreliminaryCompilerInfo} from '../../types/compiler.interfaces.js';
 import type {ParseFiltersAndOutputOptions} from '../../types/features/filters.interfaces.js';
@@ -231,7 +231,7 @@ export class FPCCompiler extends BaseCompiler {
         return inputFilename;
     }
 
-    override async writeAllFiles(dirPath: string, source: string, files: any[], filters: ParseFiltersAndOutputOptions) {
+    override async writeAllFiles(dirPath: string, source: string, files: FiledataPair[]) {
         const inputFilename = path.join(dirPath, this.getMainSourceFilename(source));
 
         if (source !== '' || !files) {

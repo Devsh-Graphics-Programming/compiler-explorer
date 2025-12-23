@@ -48,14 +48,14 @@ export class LlvmIrCfgParser extends BaseCFGParser {
         super(instructionSetInfo);
         this.functionDefinition = /^define .+ @("?[^"]+"?)\(/;
         this.labelRe = /^("?[\w$.-]+"?):\s*(;.*)?$/;
-        this.labelReference = /%("?[\w$.<>-]+"?)/g;
+        this.labelReference = /%"?([^, ]+)"?/g;
     }
 
     override filterData(asmArr: AssemblyLine[]) {
         return asmArr;
     }
 
-    override splitToFunctions(asmArr: AssemblyLine[]) {
+    override splitToFunctions(asmArr: AssemblyLine[]): Range[] {
         if (asmArr.length === 0) return [];
         const result: Range[] = [];
         let i = 0;

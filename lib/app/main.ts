@@ -26,14 +26,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 
 import type {AppArguments} from '../app.interfaces.js';
-import {initializeCompilationEnvironment} from './compilation-env.js';
-import {setupCompilerChangeHandling} from './compiler-changes.js';
-import {discoverCompilers} from './compiler-discovery.js';
-import {setupControllersAndHandlers} from './controllers.js';
-import {setupRoutesAndApi} from './routes-setup.js';
-import {setupTempDir} from './temp-dir.js';
-
 import * as aws from '../aws.js';
+import {startCompilationWorkerThread} from '../compilation/sqs-compilation-queue.js';
 import {CompilerFinder} from '../compiler-finder.js';
 import {startWineInit} from '../exec.js';
 import {RemoteExecutionQuery} from '../execution/execution-query.js';
@@ -47,8 +41,14 @@ import {SetupSentry} from '../sentry.js';
 import {sources} from '../sources/index.js';
 import {loadSponsorsFromString} from '../sponsors.js';
 import {getStorageTypeByKey} from '../storage/index.js';
+import {initializeCompilationEnvironment} from './compilation-env.js';
+import {setupCompilerChangeHandling} from './compiler-changes.js';
+import {discoverCompilers} from './compiler-discovery.js';
+import {setupControllersAndHandlers} from './controllers.js';
 import {ApplicationOptions, ApplicationResult} from './main.interfaces.js';
+import {setupRoutesAndApi} from './routes-setup.js';
 import {setupWebServer, startListening} from './server.js';
+import {setupTempDir} from './temp-dir.js';
 
 /**
  * Initialize the Compiler Explorer application
@@ -80,6 +80,7 @@ export async function initialiseApplication(options: ApplicationOptions): Promis
     const compilerFinder = new CompilerFinder(compileHandler, compilerProps, appArgs, clientOptionsHandler);
 
     const isExecutionWorker = ceProps<boolean>('execqueue.is_worker', false);
+    const isCompilationWorker = ceProps<boolean>('compilequeue.is_worker', false);
     const healthCheckFilePath = ceProps('healthCheckFilePath', null) as string | null;
 
     const formDataHandler = createFormDataHandler();
@@ -90,6 +91,7 @@ export async function initialiseApplication(options: ApplicationOptions): Promis
         compilationEnvironment.compilationQueue,
         healthCheckFilePath,
         isExecutionWorker,
+        isCompilationWorker,
         formDataHandler,
     );
 
@@ -104,7 +106,7 @@ export async function initialiseApplication(options: ApplicationOptions): Promis
         staticRoot: config.staticRoot,
         httpRoot: config.httpRoot,
         sentrySlowRequestMs: ceProps('sentrySlowRequestMs', 0),
-        distPath: distPath,
+        manifestPath: distPath,
         extraBodyClass: config.extraBodyClass,
         maxUploadSize: config.maxUploadSize,
     };
@@ -161,6 +163,10 @@ export async function initialiseApplication(options: ApplicationOptions): Promis
     if (isExecutionWorker) {
         await initHostSpecialties();
         startExecutionWorkerThread(ceProps, awsProps, compilationEnvironment);
+    }
+
+    if (isCompilationWorker) {
+        startCompilationWorkerThread(ceProps, awsProps, compilationEnvironment, appArgs);
     }
 
     startListening(webServer, appArgs);

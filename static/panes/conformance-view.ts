@@ -25,16 +25,16 @@
 import {Container} from 'golden-layout';
 import $ from 'jquery';
 import _ from 'underscore';
+import {unwrapString} from '../../shared/assert.js';
 import {escapeHTML, unique} from '../../shared/common-utils.js';
 import {CompilationResult} from '../../types/compilation/compilation.interfaces.js';
 import {CompilerInfo} from '../../types/compiler.interfaces.js';
 import {SelectedLibraryVersion} from '../../types/libraries/libraries.interfaces.js';
-import {unwrapString} from '../assert.js';
 import * as BootstrapUtils from '../bootstrap-utils.js';
 import {CompilationStatus} from '../compiler-service.interfaces.js';
 import {CompilerService} from '../compiler-service.js';
-import {createDragSource} from '../components.js';
 import * as Components from '../components.js';
+import {createDragSource} from '../components.js';
 import {SourceAndFiles} from '../download-service.js';
 import {Hub} from '../hub.js';
 import * as LibUtils from '../lib-utils.js';
@@ -489,38 +489,37 @@ export class Conformance extends Pane<ConformanceViewState> {
 
         let libraries: Record<string, Library | false> = {};
         let first = true;
-        compilers.map(compiler => {
-            if (compiler) {
-                const filteredLibraries = LibUtils.getSupportedLibraries(compiler.libsArr, langId, compiler.remote);
+        for (const compiler of compilers) {
+            if (!compiler) continue;
+            const filteredLibraries = LibUtils.getSupportedLibraries(compiler.libsArr, langId, compiler.remote);
 
-                if (first) {
-                    libraries = _.extend({}, filteredLibraries);
-                    first = false;
-                } else {
-                    const libsInCommon = _.intersection(_.keys(libraries), _.keys(filteredLibraries));
+            if (first) {
+                libraries = _.extend({}, filteredLibraries);
+                first = false;
+            } else {
+                const libsInCommon = _.intersection(_.keys(libraries), _.keys(filteredLibraries));
 
-                    for (const libKey in libraries) {
-                        const lib = libraries[libKey];
-                        if (lib && libsInCommon.includes(libKey)) {
-                            const versionsInCommon = _.intersection(
-                                Object.keys(lib.versions),
-                                Object.keys(filteredLibraries[libKey].versions),
-                            );
+                for (const libKey in libraries) {
+                    const lib = libraries[libKey];
+                    if (lib && libsInCommon.includes(libKey)) {
+                        const versionsInCommon = _.intersection(
+                            Object.keys(lib.versions),
+                            Object.keys(filteredLibraries[libKey].versions),
+                        );
 
-                            lib.versions = _.pick(lib.versions, (version, versionkey) => {
-                                return versionsInCommon.includes(versionkey);
-                            }) as Record<string, LibraryVersion>; // TODO(jeremy-rifkin)
-                        } else {
-                            libraries[libKey] = false;
-                        }
+                        lib.versions = _.pick(lib.versions, (version, versionkey) => {
+                            return versionsInCommon.includes(versionkey);
+                        }) as Record<string, LibraryVersion>; // TODO(jeremy-rifkin)
+                    } else {
+                        libraries[libKey] = false;
                     }
-
-                    libraries = _.omit(libraries, lib => {
-                        return !lib || _.isEmpty(lib.versions);
-                    }) as Record<string, Library>; // TODO(jeremy-rifkin)
                 }
+
+                libraries = _.omit(libraries, lib => {
+                    return !lib || _.isEmpty(lib.versions);
+                }) as Record<string, Library>; // TODO(jeremy-rifkin)
             }
-        });
+        }
 
         return libraries as CompilerLibs; // TODO(jeremy-rifkin)
     }

@@ -22,9 +22,10 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
+import {CompilationResult} from '../../types/compilation/compilation.interfaces.js';
 import type {CompilerInfo} from '../../types/compiler.interfaces.js';
 
-import {AssemblyLine, Edge, Node, getParserByKey} from './cfg-parsers/index.js';
+import {AssemblyLine, BaseCFGParser, Edge, getParserByKey, Node} from './cfg-parsers/index.js';
 import {OatCFGParser} from './cfg-parsers/oat.js';
 import {getInstructionSetByKey} from './instruction-sets/index.js';
 
@@ -52,7 +53,12 @@ export type CFG = {
     edges: Edge[];
 };
 
-export function generateStructure(compilerInfo: CompilerInfo, asmArr: AssemblyLine[], isLlvmIr: boolean) {
+export async function generateStructure(
+    compilerInfo: CompilerInfo,
+    asmArr: AssemblyLine[],
+    isLlvmIr: boolean,
+    fullRes?: CompilationResult,
+) {
     // figure out what we're working with
     const isa = isLlvmIr ? 'llvm' : compilerInfo.instructionSet;
     const compilerGroup = isLlvmIr ? 'llvm' : isLLVMBased(compilerInfo) ? 'clang' : compilerInfo.group;
@@ -60,11 +66,13 @@ export function generateStructure(compilerInfo: CompilerInfo, asmArr: AssemblyLi
 
     // dex2oat is a special case because it can output different instruction
     // sets. Create an OAT parser instead of searching by ISA.
-    const parser = compilerGroup?.includes('dex2oat')
-        ? new OatCFGParser(instructionSet)
-        : new (getParserByKey(compilerGroup))(instructionSet);
+    let parser: BaseCFGParser;
+    if (compilerGroup?.includes('dex2oat')) parser = new OatCFGParser(instructionSet);
+    else if (compilerGroup?.startsWith('vc')) parser = new (getParserByKey('vc'))(instructionSet);
+    else parser = new (getParserByKey(compilerGroup))(instructionSet);
 
-    const code = parser.filterData(asmArr);
+    let code = parser.filterData(asmArr);
+    code = await parser.processFuncNames(code, fullRes);
     const functions = parser.splitToFunctions(code);
     const result: Record<string, CFG> = {};
     for (const fn of functions) {

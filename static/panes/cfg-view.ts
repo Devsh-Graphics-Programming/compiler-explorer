@@ -23,19 +23,12 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 import * as fileSaver from 'file-saver';
+import {Container} from 'golden-layout';
 import $ from 'jquery';
 import * as monaco from 'monaco-editor';
-import _ from 'underscore';
-import * as BootstrapUtils from '../bootstrap-utils.js';
-import {Pane} from './pane.js';
-
-import {Container} from 'golden-layout';
-import {Hub} from '../hub.js';
-import * as utils from '../utils.js';
-import {CfgState} from './cfg-view.interfaces.js';
-import {PaneState} from './pane.interfaces.js';
-
 import TomSelect from 'tom-select';
+import _ from 'underscore';
+import {assert, unwrap} from '../../shared/assert.js';
 import {escapeHTML} from '../../shared/common-utils.js';
 import {
     AnnotatedCfgDescriptor,
@@ -45,10 +38,15 @@ import {
 } from '../../types/compilation/cfg.interfaces.js';
 import {CompilationResult} from '../../types/compilation/compilation.interfaces.js';
 import {CompilerInfo} from '../../types/compiler.interfaces.js';
-import {assert, unwrap} from '../assert.js';
+import * as BootstrapUtils from '../bootstrap-utils.js';
 import {GraphLayoutCore} from '../graph-layout-core.js';
+import {Hub} from '../hub.js';
 import * as MonacoConfig from '../monaco-config.js';
+import * as utils from '../utils.js';
 import {Toggles} from '../widgets/toggles.js';
+import {CfgState} from './cfg-view.interfaces.js';
+import {PaneState} from './pane.interfaces.js';
+import {Pane} from './pane.js';
 
 const ColorTable = {
     red: '#FE5D5D',
@@ -143,6 +141,8 @@ export class Cfg extends Pane<CfgState> {
                 editorid: state.editorid,
                 treeid: state.treeid,
                 selectedFunction: (state as any).selectedFn,
+                centerparents: state.centerparents,
+                narrowtreelayout: state.narrowtreelayout,
             };
         }
         super(hub, container, state);
@@ -248,7 +248,7 @@ export class Cfg extends Pane<CfgState> {
                 // pass, let the user select block contents and other text
             }
         });
-        this.graphContainer.addEventListener('mouseup', e => {
+        this.graphContainer.addEventListener('mouseup', () => {
             this.dragging = false;
         });
         this.graphContainer.addEventListener('mousemove', e => {
@@ -533,7 +533,11 @@ export class Cfg extends Pane<CfgState> {
         const fn = this.results[name];
         this.bbMap = {};
         await this.createBasicBlocks(fn);
-        this.layout = new GraphLayoutCore(fn as AnnotatedCfgDescriptor, !!this.state.centerparents);
+        this.layout = new GraphLayoutCore(
+            fn as AnnotatedCfgDescriptor,
+            !!this.state.centerparents,
+            !!this.state.narrowtreelayout,
+        );
         this.applyLayout();
         this.drawEdges();
         this.infoElement.innerHTML = `Layout time: ${Math.round(this.layout.layoutTime)}ms<br/>Basic blocks: ${
@@ -620,6 +624,13 @@ export class Cfg extends Pane<CfgState> {
         })} />`;
         // just grab the edges/arrows directly
         doc += this.svg.innerHTML;
+
+        if (!this.layout) {
+            // empty function, or no function selected
+            doc += '</svg>';
+            this.setZoom(this.zoom, true);
+            return doc;
+        }
         // the blocks we'll have to copy over
         for (const block of this.layout.blocks) {
             const block_elem = this.bbMap[block.data.id];
@@ -645,7 +656,7 @@ export class Cfg extends Pane<CfgState> {
                 const left = span_box.left - block_bounding_box.left;
                 doc += `<text ${attrs({
                     x: block.coordinates.x + left,
-                    y: block.coordinates.y + top + span_box.height / 2 + Number.parseInt(block_style.paddingTop),
+                    y: block.coordinates.y + top + span_box.height / 2 + Number.parseInt(block_style.paddingTop, 10),
                     class: 'code',
                     fill: span_style.color,
                 })}>${escapeHTML(text)}</text>`;
@@ -710,6 +721,7 @@ export class Cfg extends Pane<CfgState> {
             selectedFunction: this.state.selectedFunction,
             isircfg: this.state.isircfg,
             centerparents: this.toggles.get().centerparents,
+            narrowtreelayout: this.toggles.get().narrowtreelayout,
         };
         this.paneRenaming.addState(state);
         return state;

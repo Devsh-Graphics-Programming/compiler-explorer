@@ -22,15 +22,12 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import {parse} from '../shared/stacktrace.js';
-
-import {options} from './options.js';
-
 import * as Sentry from '@sentry/browser';
-
 import GoldenLayout from 'golden-layout';
+import {parse} from '../shared/stacktrace.js';
+import {serialiseState} from '../shared/url-serialization.js';
+import {options} from './options.js';
 import {SiteSettings} from './settings.js';
-import {serialiseState} from './url.js';
 
 let layout: GoldenLayout;
 let allowSendCode: boolean;
@@ -58,6 +55,25 @@ export function setSentryLayout(l: GoldenLayout) {
     });
 }
 
+function isEventLike(value: unknown): value is Event {
+    return value instanceof Event || value?.constructor?.name === 'Event' || value?.constructor?.name === 'CustomEvent';
+}
+
+function formatEventRejection(evt: Event): string {
+    const targetName = evt.target?.constructor?.name ?? 'unknown';
+    let message = `Event rejection: type="${evt.type}", target="${targetName}"`;
+
+    if ('detail' in evt && evt.detail !== undefined) {
+        try {
+            message += `, detail=${JSON.stringify(evt.detail)}`;
+        } catch {
+            message += ', detail=[Unserializable]';
+        }
+    }
+
+    return message;
+}
+
 export function SetupSentry() {
     if (options.statusTrackingEnabled && options.sentryDsn) {
         Sentry.init({
@@ -69,7 +85,13 @@ export function SetupSentry() {
                 // Source mapping happens AFTER beforeSend/ignoreErrors processing
                 /this.error\(new CancellationError\(\)/,
                 /new StandardMouseEvent\(monaco-editor/,
-                /Object Not Found Matching Id:2/,
+                // CEFSharp bot errors - these come from automated scanners, particularly Microsoft Outlook's
+                // SafeLink feature that scans URLs in emails. The error format "Object Not Found Matching Id:X,
+                // MethodName:Y, ParamCount:Z" is specific to CEFSharp (.NET Chromium wrapper).
+                // Analysis of 76,000+ events shows 100% come from Windows + Chrome (CEFSharp's signature).
+                // This pattern was previously seen with Id:2 (PR #7103).
+                // See: https://github.com/DataDog/browser-sdk/issues/2715
+                /Object Not Found Matching Id:\d+/,
                 /Illegal value for lineNumber/,
                 'SlowRequest',
                 // Monaco Editor clipboard cancellation errors
@@ -105,16 +127,23 @@ export function SetupSentry() {
             },
         });
         window.addEventListener('unhandledrejection', event => {
-            // Convert non-Error rejection reasons to Error objects
             let reason = event.reason;
-            if (!(reason instanceof Error)) {
-                const errorMessage =
-                    typeof reason === 'string' ? reason : `Non-Error rejection: ${JSON.stringify(reason)}`;
-                reason = new Error(errorMessage);
 
-                // Preserve original reason for debugging
-                (reason as any).originalReason = event.reason;
+            if (!(reason instanceof Error)) {
+                // Safari sometimes rejects promises with CustomEvent/Event objects.
+                // Extract useful properties instead of stringifying to empty object.
+                // See: https://github.com/compiler-explorer/compiler-explorer/issues/8172
+                // Related: https://github.com/getsentry/sentry-javascript/issues/2210
+                const errorMessage =
+                    typeof reason === 'string'
+                        ? reason
+                        : isEventLike(reason)
+                          ? formatEventRejection(reason)
+                          : `Non-Error rejection: ${JSON.stringify(reason)}`;
+
+                reason = Object.assign(new Error(errorMessage), {originalReason: event.reason});
             }
+
             SentryCapture(reason, 'Unhandled Promise Rejection');
         });
     }

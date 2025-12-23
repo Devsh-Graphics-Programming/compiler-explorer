@@ -25,30 +25,27 @@
 import {Container} from 'golden-layout';
 import $ from 'jquery';
 import * as monaco from 'monaco-editor';
+import {editor} from 'monaco-editor';
 import _ from 'underscore';
 
-import {editor} from 'monaco-editor';
 import IEditorMouseEvent = editor.IEditorMouseEvent;
 
-import {IrState} from './ir-view.interfaces.js';
-import {MonacoPaneState} from './pane.interfaces.js';
-import {MonacoPane} from './pane.js';
-
-import {applyColours} from '../colour.js';
-import {extendConfig} from '../monaco-config.js';
-
-import {unwrap} from '../assert.js';
-import {createDragSource} from '../components.js';
-import * as Components from '../components.js';
-import {Hub} from '../hub.js';
-import {Toggles} from '../widgets/toggles.js';
-
+import {unwrap} from '../../shared/assert.js';
 import {CompilationResult} from '../../types/compilation/compilation.interfaces.js';
 import {LLVMIrBackendOptions} from '../../types/compilation/ir.interfaces.js';
 import {CompilerInfo} from '../../types/compiler.interfaces.js';
+import {applyColours} from '../colour.js';
+import * as Components from '../components.js';
+import {createDragSource} from '../components.js';
+import {Hub} from '../hub.js';
+import {extendConfig} from '../monaco-config.js';
 import {SentryCapture} from '../sentry.js';
 import {Alert} from '../widgets/alert.js';
+import {Toggles} from '../widgets/toggles.js';
 import {Compiler} from './compiler.js';
+import {IrState} from './ir-view.interfaces.js';
+import {MonacoPaneState} from './pane.interfaces.js';
+import {MonacoPane} from './pane.js';
 
 export class Ir extends MonacoPane<monaco.editor.IStandaloneCodeEditor, IrState> {
     private linkedFadeTimeoutId: NodeJS.Timeout | null = null;
@@ -72,6 +69,7 @@ export class Ir extends MonacoPane<monaco.editor.IStandaloneCodeEditor, IrState>
         filterComments: true,
         noDiscardValueNames: true,
         demangle: true,
+        showOptimized: true,
     };
     private cfgButton: JQuery;
     private wrapButton: JQuery<HTMLElement>;
@@ -115,9 +113,9 @@ export class Ir extends MonacoPane<monaco.editor.IStandaloneCodeEditor, IrState>
     override registerButtons(state: IrState) {
         super.registerButtons(state);
         this.options = new Toggles(this.domRoot.find('.options'), state as unknown as Record<string, boolean>);
-        this.options.on('change', this.onOptionsChange.bind(this));
+        this.options.on('change', () => this.onOptionsChange());
         this.filters = new Toggles(this.domRoot.find('.filters'), state as unknown as Record<string, boolean>);
-        this.filters.on('change', this.onOptionsChange.bind(this));
+        this.filters.on('change', () => this.onOptionsChange());
 
         this.cfgButton = this.domRoot.find('.cfg');
         const createCfgView = () => {
@@ -310,6 +308,7 @@ export class Ir extends MonacoPane<monaco.editor.IStandaloneCodeEditor, IrState>
             filterComments: filters['filter-comments'],
             noDiscardValueNames: options['-fno-discard-value-names'],
             demangle: options['demangle-symbols'],
+            showOptimized: options['show-optimized'],
         };
         let changed = false;
         for (const k in newOptions) {
@@ -349,6 +348,8 @@ export class Ir extends MonacoPane<monaco.editor.IStandaloneCodeEditor, IrState>
         if (compiler && !compiler.supportsIrView) {
             this.editor.setValue('<LLVM IR output is not supported for this compiler>');
         }
+
+        this.options.enableToggle('show-optimized', !!compiler?.supportsIrViewOptToggleOption);
     }
 
     showIrResults(result: any): void {

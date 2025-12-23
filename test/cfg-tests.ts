@@ -28,20 +28,20 @@ import path from 'node:path';
 
 import {describe, expect, it} from 'vitest';
 
-import * as cfg from '../lib/cfg/cfg.js';
+import {generateStructure} from '../lib/cfg/cfg.js';
 
+import {CompilerInfo} from '../types/compiler.interfaces.js';
 import {makeFakeCompilerInfo, resolvePathFromTestRoot} from './utils.js';
 
-async function DoCfgTest(cfgArg, filename, isLlvmIr = false) {
+async function DoCfgTest(cfgArg: string, filename: string, isLlvmIr = false, compilerInfo?: CompilerInfo) {
     const contents = JSON.parse(await fs.readFile(filename, 'utf8'));
-    const structure = cfg.generateStructure(
-        makeFakeCompilerInfo({
+    if (!compilerInfo) {
+        compilerInfo = makeFakeCompilerInfo({
             compilerType: '',
             version: cfgArg,
-        }),
-        contents.asm,
-        isLlvmIr,
-    );
+        });
+    }
+    const structure = await generateStructure(compilerInfo, contents.asm, isLlvmIr);
     expect(structure).toEqual(contents.cfg);
 }
 
@@ -69,10 +69,54 @@ describe('Cfg test cases', () => {
         }
     });
 
+    describe('msvc', () => {
+        const msvcCompilerInfo = makeFakeCompilerInfo({
+            group: 'vc',
+            version: 'vc2022',
+            compilerType: 'vc',
+        });
+        for (const filename of files.filter(x => x.includes('msvc'))) {
+            it(filename, async () => {
+                await DoCfgTest('vc', path.join(testcasespath, filename), false, msvcCompilerInfo);
+            });
+        }
+    });
+
     describe('llvmir', () => {
         for (const filename of files.filter(x => x.includes('llvmir'))) {
             it(filename, async () => {
                 await DoCfgTest('clang', path.join(testcasespath, filename), true);
+            });
+        }
+    });
+
+    describe('python', () => {
+        const pythonCompilerInfo = makeFakeCompilerInfo({
+            instructionSet: 'python',
+            group: 'python3',
+            version: 'Python 3.12.1',
+            compilerType: 'python',
+        });
+
+        for (const filename of files.filter(x => x.includes('python'))) {
+            it(filename, async () => {
+                await DoCfgTest('python', path.join(testcasespath, filename), false, pythonCompilerInfo);
+            });
+        }
+    });
+
+    describe('xtensa', () => {
+        // instructionSet is a real value, group/version/compilerType just need to be distinct from others
+        const xtensaCompilerInfo = makeFakeCompilerInfo({
+            instructionSet: 'xtensa',
+            group: 'xtensa',
+            version: 'xtensa',
+            compilerType: 'xtensa',
+        });
+
+        for (const filename of files.filter(x => x.includes('xtensa'))) {
+            it(filename, async () => {
+                await DoCfgTest('python', path.join(testcasespath, filename), false, xtensaCompilerInfo);
             });
         }
     });

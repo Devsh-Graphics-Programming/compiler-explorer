@@ -22,9 +22,8 @@
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
 
-import path from 'node:path';
-
 import fs from 'node:fs/promises';
+import path from 'node:path';
 
 import {splitArguments} from '../../shared/common-utils.js';
 import {CompilationInfo} from '../../types/compilation/compilation.interfaces.js';
@@ -55,7 +54,7 @@ export class ClangTidyTool extends BaseTool {
         const sourcefile = inputFilepath;
         const options = compilationInfo.options;
         const dir = path.dirname(sourcefile);
-        const includeflags = super.getIncludeArguments(compilationInfo.libraries, supportedLibraries || {});
+        const includeflags = super.getIncludeArguments(compilationInfo.libraries, supportedLibraries || {}, dir);
         const libOptions = super.getLibraryOptions(compilationInfo.libraries, supportedLibraries || {});
 
         let source = '';
@@ -81,6 +80,8 @@ export class ClangTidyTool extends BaseTool {
         const manualCompileFlags = options.filter(option => option !== sourcefile);
         compileFlags = compileFlags.concat(manualCompileFlags);
         compileFlags = compileFlags.concat(this.tool.options);
+
+        compileFlags = this.replacePathsIfNeededForSandbox(compileFlags, dir);
 
         // TODO: do we want compile_flags.txt rather than prefixing everything with -extra-arg=
         await fs.writeFile(path.join(dir, 'compile_flags.txt'), compileFlags.join('\n'));

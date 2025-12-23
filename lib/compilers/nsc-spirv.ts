@@ -23,6 +23,7 @@
 // POSSIBILITY OF SUCH DAMAGE.
 
 import path from 'path';
+import fs from 'fs/promises';
 
 import type {ExecutionOptions} from '../../types/compilation/compilation.interfaces.js';
 import type {PreliminaryCompilerInfo} from '../../types/compiler.interfaces.js';
@@ -31,7 +32,7 @@ import {BaseCompiler} from '../base-compiler.js';
 import {logger} from '../logger.js';
 import {SPIRVAsmParser} from '../parsers/asm-parser-spirv.js';
 import * as utils from '../utils.js';
-import { splitArguments } from '../../shared/common-utils.js';
+import {splitArguments} from '../../shared/common-utils.js';
 import {unwrap} from '../assert.js';
 import type {ConfiguredOverrides} from '../../types/compilation/compiler-overrides.interfaces.js';
 import {LLVMIrBackendOptions} from '../../types/compilation/ir.interfaces.js';
@@ -91,6 +92,15 @@ export class NSCSPIRVCompiler extends BaseCompiler {
         }
 
         userOptions = this.filterUserOptions(userOptions) || [];
+
+        const preprocessOnly = userOptions.includes('-P');
+        if (preprocessOnly) {
+            const fcIndex = options.indexOf('-Fc');
+            if (fcIndex !== -1 && fcIndex + 1 < options.length) {
+                options[fcIndex + 1] = options[fcIndex + 1].replace(/\.spv$/i, '.i');
+            }
+        }
+
         return options.concat(
             libIncludes,
             libOptions,
@@ -134,7 +144,22 @@ export class NSCSPIRVCompiler extends BaseCompiler {
 
         const bitcode = await this.exec(compiler, newOptions, execOptions);
         const result = this.transformToCompilationResult(bitcode, inputFilename);
-        if (bitcode.code !== 0 || !(await utils.fileExists(bitcodeFilename))) {
+        if (bitcode.code !== 0) {
+            return result;
+        }
+
+        const preprocessOnly = options.includes('-P');
+        if (preprocessOnly) {
+            const ppFilename = path.join(sourceDir, this.outputFilebase + '.i');
+            if (await utils.fileExists(ppFilename)) {
+                const ppText = await fs.readFile(ppFilename, 'utf8');
+                result.stdout = result.stdout.concat(utils.parseOutput(ppText));
+            }
+            result.languageId = 'hlsl';
+            return result;
+        }
+
+        if (!(await utils.fileExists(bitcodeFilename))) {
             return result;
         }
 

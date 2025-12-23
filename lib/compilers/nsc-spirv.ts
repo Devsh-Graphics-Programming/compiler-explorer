@@ -32,7 +32,7 @@ import {BaseCompiler} from '../base-compiler.js';
 import {logger} from '../logger.js';
 import {SPIRVAsmParser} from '../parsers/asm-parser-spirv.js';
 import type {OptRemark} from '../../static/panes/opt-view.interfaces.js';
-import type * as StackUsage from '../parsers/stackusage.js';
+import type {StackUsageInfo} from '../stack-usage-transformer.js';
 import * as utils from '../utils.js';
 import {splitArguments} from '../../shared/common-utils.js';
 import {unwrap} from '../assert.js';
@@ -256,9 +256,9 @@ export class NSCSPIRVCompiler extends BaseCompiler {
         outputFilename: string,
         filters: ParseFiltersAndOutputOptions,
         produceOptRemarks = false,
-    ): Promise<[CompilationResult, OptRemark[], StackUsage.StackUsageInfo[]]> {
+    ): Promise<[CompilationResult, OptRemark[], StackUsageInfo[]]> {
         if ((result as any).preprocessOnly) {
-            return [result, [] as OptRemark[], [] as StackUsage.StackUsageInfo[]];
+            return [result, [] as OptRemark[], [] as StackUsageInfo[]];
         }
         return super.postProcess(result, outputFilename, filters, produceOptRemarks);
     }

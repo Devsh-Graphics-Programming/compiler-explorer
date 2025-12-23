@@ -153,11 +153,13 @@ export class NSCSPIRVCompiler extends BaseCompiler {
             const ppFilename = path.join(sourceDir, this.outputFilebase + '.i');
             if (await utils.fileExists(ppFilename)) {
                 const ppText = await fs.readFile(ppFilename, 'utf8');
-                result.asm = utils.parseOutput(ppText);
+                result.asm = ppText;
             } else {
-                result.asm = utils.parseOutput('<No preprocessed output file>');
+                result.asm = '<No preprocessed output file>';
             }
             result.languageId = 'hlsl';
+            result.okToCache = false;
+            (result as any).preprocessOnly = true;
             return result;
         }
 
@@ -245,5 +247,17 @@ export class NSCSPIRVCompiler extends BaseCompiler {
         return {
             asm: ir.asm,
         };
+    }
+
+    override async postProcess(
+        result,
+        outputFilename: string,
+        filters: ParseFiltersAndOutputOptions,
+        produceOptRemarks = false,
+    ) {
+        if ((result as any).preprocessOnly) {
+            return [result, [], []];
+        }
+        return super.postProcess(result, outputFilename, filters, produceOptRemarks);
     }
 }
